@@ -13,7 +13,6 @@
  * @module dsh-careful-full-access/engine
  */
 
-import type { SandboxMode } from '@deepseek-ai/dsh-sandbox'
 import type { PwshAnalyzer } from './analyzer.ts'
 import { hasDestructiveSignal, lexBash, lexPwsh, type LexFacts } from './lexer.ts'
 import type { ModelCheckOutcome, ModelCheckRoute, ModelCheckRunner } from './model-check.ts'
@@ -40,8 +39,13 @@ export interface EngineOptions {
 export interface JudgeInput {
   dialect: 'pwsh' | 'bash'
   command: string
-  /** The per-call resolved sandbox mode; undefined when no policy is mounted. */
-  mode: SandboxMode | undefined
+  /**
+   * The per-call resolved sandbox mode as text; undefined when no policy is
+   * mounted. Kept as a plain string so the plugin also compiles against
+   * published DSH types whose `SandboxMode` does not yet include
+   * `careful-full-access`; the engine only ever compares it to that literal.
+   */
+  mode: string | undefined
   /** The per-call workspace root; undefined when no policy is mounted. */
   workspaceRoot: string | undefined
   /** The tool-call abort signal, observed around every spawn. */

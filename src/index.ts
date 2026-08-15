@@ -200,13 +200,16 @@ export function apply(ctx: Context, config: Config): void {
       ? undefined
       : sandboxPolicy.resolve({ session })
     // The guard is careful-full-access ONLY: every other mode passes through
-    // without any guard work or audit trail.
-    if (policy?.mode !== 'careful-full-access') return next()
+    // without any guard work or audit trail. Read as text so the comparison
+    // also compiles against published DSH types whose SandboxMode does not
+    // yet include careful-full-access.
+    const mode: string | undefined = policy?.mode
+    if (mode !== 'careful-full-access') return next()
     const decision = await engine.judge({
       dialect: exec.name === 'pwsh' ? 'pwsh' : 'bash',
       command,
-      mode: policy.mode,
-      workspaceRoot: policy.workspaceRoot,
+      mode,
+      workspaceRoot: policy?.workspaceRoot,
       signal: exec.signal,
       /* v8 ignore next -- the careful-mode gate above guarantees a session is present here */
       sessionKey: session === undefined ? '' : String(session.id),
@@ -227,8 +230,7 @@ export function apply(ctx: Context, config: Config): void {
         toolName: exec.name,
         decision: decision.kind,
         ...decision.tier === undefined ? {} : { tier: decision.tier },
-        /* v8 ignore next -- the careful-mode gate above guarantees the resolved policy carries a mode */
-        ...policy.mode !== undefined ? { mode: policy.mode } : {},
+        mode,
         ...decision.modelCheck === undefined ? {} : { modelCheck: decision.modelCheck },
         fingerprint,
         count: gated.note.count,
@@ -240,8 +242,7 @@ export function apply(ctx: Context, config: Config): void {
           toolName: exec.name,
           decision: decision.kind,
           ...decision.tier === undefined ? {} : { tier: decision.tier },
-          /* v8 ignore next -- the careful-mode gate above guarantees the resolved policy carries a mode */
-          ...policy.mode !== undefined ? { mode: policy.mode } : {},
+          mode,
           ...decision.kind === 'deny' || decision.kind === 'ask' ? { reason: decision.reason } : {},
           ...decision.modelCheck === undefined ? {} : { modelCheck: decision.modelCheck },
           /* v8 ignore next -- the registry always stamps callId on executions */

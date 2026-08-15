@@ -95,26 +95,52 @@ danger-full-access is the user's explicit opt-out; neither is second-guessed.
 
 ## Install and mount
 
-1. Apply the patch to a DSH source tree (registers the careful mode, the
-   preset, the UI, and the red confirmation chain):
-   `git apply patches/careful-full-access.patch`, then rebuild.
-2. Install the plugin: `pnpm add dsh-careful-full-access` (or npm install).
-3. Mount in the host composition (e.g.
-   `packages/bundle/base/cordis.patch.yml` — the patch already contains this
-   row; add it yourself for manual mounting):
+**Recommended: source-tree install** (this repo carries its own verifiable
+build setup; the npm package is not published yet — see below).
 
-```yaml
-- id: command-guard
-  name: 'dsh-careful-full-access'
+1. Prepare a DSH source tree. This patch was generated against upstream commit
+   `47f943859` (`Merge pull request #2519 from deepseek-harness/feat/npm-public`);
+   if upstream has moved, `git apply` may no longer be clean — merge by hand in
+   that case (every hunk is a composition registration, a dependency
+   declaration, or a tsconfig reference).
+2. Apply the core patch (registers the careful mode, the permission preset,
+   the UI option + glyph, the red approval-severity chain, the ACL root
+   protection): `git apply patches/careful-full-access.patch`
+3. Vendor this repo at `packages/guard/careful-full-access/`: copy `src/` and
+   `tests/`, then replace that package's `tsconfig.json` and `package.json`
+   with the skeletons in `harness/` (tree-style tsconfig references and
+   `workspace:^` dependencies, so the runtime code is identical to the host's).
+4. `pnpm install && pnpm run build` (or run the repo-root build before
+   `pnpm dsh web`).
+5. Restart and switch the session permission to `careful-full-access`. The
+   mount row is already in the patch (`id: command-guard` +
+   `name: 'dsh-careful-full-access'` inside
+   `packages/bundle/base/cordis.patch.yml`).
+
+**npm path (not available yet)**: `dsh-careful-full-access` has not been
+published to npm — `pnpm add dsh-careful-full-access` fails today, and `lib/`
+must be built first (`main`/`types` point at `lib/`). Use the source-tree path
+for now.
+
+## Development and verification in this repo
+
+The standalone repo is self-verifiable after cloning:
+
+```sh
+pnpm install          # registry dependencies (published DSH packages)
+pnpm run typecheck    # tsc against published types, zero errors (dual-compatible mode typing)
+pnpm test             # vitest: 227 pass + 1 conditionally skipped
 ```
 
-Restart, switch the session permission to `careful-full-access`, and the
-guard is live.
-
-> Source-development mode: place this repo at
-> `packages/guard/careful-full-access/` inside a DSH source tree and apply the patch
-> to get monorepo type references and the full test suite; the npm install
-> path needs only the mount row, no tsconfig changes.
+- The guard source is dual-compatible with published DSH types: the sandbox
+  mode is compared as plain text, so this repo compiles independently without
+  waiting for an official release that includes the `careful-full-access`
+  enum.
+- The one skipped case (`passes the danger severity through the approval
+  seam`) exercises the RED confirmation chain — a core-patch change that only
+  exists in a patched harness tree; inside the tree the case runs normally
+  (full tree suite: 228 tests, 100% line/branch/function coverage).
+- `DSH_GUARD_CORE_PATCH=1 pnpm test` forces the case in a patched environment.
 
 ## Config
 
@@ -127,14 +153,14 @@ window), `analyzeTimeoutMs`, `previewTimeoutMs`, `previewSampleLimit`,
 
 ## Testing and verification
 
-- 228 unit + pipeline integration tests, 100% line/branch/function coverage
-  (`pnpm test` inside the harness tree; the standalone repo's tests depend on
-  published DSH packages).
-- Zero-risk smoke: `Remove-Item -Recurse -Force Z:\` (nonexistent drive) →
-  disaster-tier review under careful mode, never executed.
-- Runner e2e: under a restricted token, child delete/rename work, the
-  workspace root cannot be deleted/renamed, and legacy grant shapes migrate
-  in place.
+- Standalone repo: `pnpm run typecheck` with zero errors; `pnpm test` with 227
+  passing and 1 conditionally skipped (see the section above).
+- Inside a patched harness tree: 228 unit + pipeline integration tests, 100%
+  line/branch/function coverage; zero-risk smoke
+  `Remove-Item -Recurse -Force Z:\` (nonexistent drive) → disaster-tier
+  review, never executed; runner e2e proving child delete/rename work under a
+  restricted token, the workspace root cannot be deleted/renamed, and legacy
+  grant shapes migrate in place.
 
 ## Known limitations
 

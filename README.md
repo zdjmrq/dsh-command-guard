@@ -66,21 +66,30 @@ AI 编码代理最大的无防护风险之一是**误删**：一条解析错误�
 
 ## 安装与挂载
 
-1. 把补丁打到 DSH 源码树（注册 `careful-full-access` 模式、预设、UI 与红色确认链路）：
-   `git apply patches/careful-full-access.patch` 并重建。
-2. 安装插件：`pnpm add dsh-careful-full-access`（或 npm install）。
-3. 在宿主组合（host composition，例如 `packages/bundle/base/cordis.patch.yml`）加入一行
-   （补丁已包含此行，手动挂载时自行添加）：
+**推荐方式：源码树安装**（本仓库自带可验证的独立构建配置；npm 包尚未发布，见下方说明）。
 
-```yaml
-- id: command-guard
-  name: 'dsh-careful-full-access'
+1. 准备 DSH 源码树。本补丁相对官方上游 commit `47f943859`（`Merge pull request #2519 from deepseek-harness/feat/npm-public`）生成——上游已前进时可能无法干净 `git apply`，此时对照补丁手工合并（改动点均为组合注册、依赖声明与 tsconfig 引用，结构清晰）。
+2. 应用核心补丁（注册 `careful-full-access` 模式、权限预设、UI 档位与图标、审批红色标注链路、ACL 根防删）：
+   `git apply patches/careful-full-access.patch`
+3. 把本仓库放进树内 `packages/guard/careful-full-access/`：复制 `src/`、`tests/`，并用 `harness/` 里的骨架替换该包的 `tsconfig.json` 与 `package.json`（树式 tsconfig 引用与 `workspace:^` 依赖——运行时代码与宿主完全同源）。
+4. `pnpm install && pnpm run build`（或 `pnpm dsh web` 前执行仓库根构建）。
+5. 重启后把会话权限切到 `careful-full-access`，守卫即生效。挂载行补丁已包含（`id: command-guard` + `name: 'dsh-careful-full-access'`，位于 `packages/bundle/base/cordis.patch.yml`）。
+
+**npm 方式（尚未可用）**：`dsh-careful-full-access` 还没有发布到 npm——`pnpm add dsh-careful-full-access` 目前会失败；且发布前需要先构建 `lib/`（`package.json` 的 `main`/`types` 指向 lib）。当前请使用源码树方式。
+
+## 本仓库的开发与验证
+
+独立仓库自带构建配置，`clone` 后即可验证：
+
+```sh
+pnpm install          # registry 依赖（公开发布版 DSH 包）
+pnpm run typecheck    # tsc 对公开发布类型零错误（mode 已做双兼容处理）
+pnpm test             # vitest：227 例通过 + 1 例按需跳过
 ```
 
-重启后把会话权限切到 `careful-full-access`，守卫即生效。
-
-> 源码开发方式：把本仓库放入 DSH 源码树的 `packages/guard/careful-full-access/` 再应用补丁，
-> 即可享受 monorepo 的类型引用与全量测试；npm 安装方式则只需挂载行，无需 tsconfig 改动。
+- 守卫源码对公开发布类型做双兼容：模式比较按字符串处理，因此本仓库可独立编译，不必等待官方发布含 `careful-full-access` 枚举的版本。
+- 跳过的 1 例（`passes the danger severity through the approval seam`）验证**红色确认链路**——那是核心补丁的改动，只在应用了补丁的 harness 树里生效；树内运行时该用例正常执行（树内全量 228 例通过、100% 行/分支/函数覆盖）。
+- `DSH_GUARD_CORE_PATCH=1 pnpm test` 可在打补丁环境中强制运行该用例。
 
 ## 配置项
 
@@ -91,11 +100,8 @@ AI 编码代理最大的无防护风险之一是**误删**：一条解析错误�
 
 ## 测试与验证
 
-- 单元 + 管线集成测试 228 例、100% 行/分支/函数覆盖率（`pnpm test` 于 harness 树内运行；
-  独立仓库中测试依赖 DSH 公开发布包）。
-- 零风险冒烟：`Remove-Item -Recurse -Force Z:\`（不存在的盘符）→ 守卫在 careful 模式下
-  走灾难级复核，未执行。
-- runner e2e：受限令牌下子项删除/改名可用、工作区根不可删除/改名、旧授权形态原地迁移。
+- 独立仓库：`pnpm run typecheck` 零错误、`pnpm test` 227 例通过 + 1 例按需跳过（见上节）。
+- harness 树内（应用补丁后）：单元 + 管线集成测试 228 例、100% 行/分支/函数覆盖率；零风险冒烟 `Remove-Item -Recurse -Force Z:\`（不存在的盘符）→ 灾难级复核、未执行；runner e2e 验证受限令牌下子项删除/改名可用、工作区根不可删除/改名、旧授权形态原地迁移。
 
 ## 已知局限
 
