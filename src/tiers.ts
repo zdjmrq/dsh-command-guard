@@ -3,9 +3,9 @@
  * facts) onto the four guard tiers. Pure — no processes, no sessions — so the
  * same rules run identically for the fast lex-only path and the full AST path.
  *
- * The tiers are mode-independent by design: which tier becomes deny, ask, or
- * the careful-preview pipeline is the engine's per-mode decision, not the
- * classifier's.
+ * The tiers are mode-independent by design: which tier becomes allow,
+ * model-check, or model-check plus human confirmation is the engine's
+ * decision, not the classifier's.
  *
  * @module @deepseek-ai/dsh-command-guard/tiers
  */
@@ -106,6 +106,12 @@ function netDeleteRecursive(rawCommand: string): boolean {
  * @returns the tier verdict with its model-facing reason.
  */
 export function classifyPwsh(rawCommand: string, report: PwshReport | undefined, facts: LexFacts, context: TierContext): GuardVerdict {
+  // Top-level git dispatch: subcommand semantics decide, not inner words.
+  if (facts.git !== undefined) {
+    if (!facts.git.destructive) return { tier: 'normal', reason: '' }
+    return { tier: 'elevated', reason: facts.git.reason ?? 'command guard: a destructive git subcommand needs review' }
+  }
+
   const families = new Set<VerbFamily>(facts.families)
   if (report !== undefined) {
     for (const command of report.commands) {
@@ -121,7 +127,7 @@ export function classifyPwsh(rawCommand: string, report: PwshReport | undefined,
   }
 
   if (families.has('format') || facts.diskpartClean) {
-    return { tier: 'disaster', reason: 'command guard: disk-level operations (format/clear/partition) are refused in every mode' }
+    return { tier: 'disaster', reason: 'command guard: disk-level operations (format/clear/partition)' }
   }
 
   const targets = collectTargets(report, facts)
@@ -129,24 +135,24 @@ export function classifyPwsh(rawCommand: string, report: PwshReport | undefined,
   const recursive = hasRecursive(report, facts)
 
   if (facts.robocopyMir && protectedHit !== undefined) {
-    return { tier: 'disaster', reason: `command guard: robocopy /MIR against the protected root "${protectedHit}" is refused in every mode` }
+    return { tier: 'disaster', reason: `command guard: robocopy /MIR against the protected root "${protectedHit}"` }
   }
   if (facts.netDeleteCall && protectedHit !== undefined && netDeleteRecursive(rawCommand)) {
-    return { tier: 'disaster', reason: `command guard: recursive .NET deletion of the protected root "${protectedHit}" is refused in every mode` }
+    return { tier: 'disaster', reason: `command guard: recursive .NET deletion of the protected root "${protectedHit}"` }
   }
   if (facts.netDeleteCall && protectedHit !== undefined) {
-    return { tier: 'high-risk', reason: `command guard: .NET deletion targeting the protected root "${protectedHit}" needs explicit review` }
+    return { tier: 'elevated', reason: `command guard: .NET deletion targeting the protected root "${protectedHit}"` }
   }
   const insideProtected = facts.netDeleteCall ? hitsInsideProtected(targets, context) : undefined
   if (insideProtected !== undefined) {
-    return { tier: 'high-risk', reason: `command guard: .NET deletion inside the protected root (${insideProtected}) needs explicit review` }
+    return { tier: 'elevated', reason: `command guard: .NET deletion inside the protected root (${insideProtected})` }
   }
   if (families.has('delete') && recursive && protectedHit !== undefined) {
-    return { tier: 'disaster', reason: `command guard: recursive deletion of the protected root "${protectedHit}" is refused in every mode` }
+    return { tier: 'disaster', reason: `command guard: recursive deletion of the protected root "${protectedHit}"` }
   }
 
   if (families.has('recycle')) {
-    return { tier: 'high-risk', reason: 'command guard: emptying the recycle bin needs explicit review' }
+    return { tier: 'elevated', reason: 'command guard: emptying the recycle bin' }
   }
 
   // Without a readable AST report the remaining refinements cannot be trusted;
@@ -159,18 +165,18 @@ export function classifyPwsh(rawCommand: string, report: PwshReport | undefined,
   const dynamic = hasDynamicTarget(report, facts)
   if (families.has('delete')) {
     if (recursive && dynamic) {
-      return { tier: 'high-risk', reason: 'command guard: recursive deletion with dynamically resolved targets needs explicit review' }
+      return { tier: 'elevated', reason: 'command guard: recursive deletion with dynamically resolved targets' }
     }
     if (recursive && force && (facts.wildcard || findsUnbounded(targets, context) !== undefined)) {
-      return { tier: 'high-risk', reason: 'command guard: recursive forced deletion outside the workspace needs explicit review' }
+      return { tier: 'elevated', reason: 'command guard: recursive forced deletion outside the workspace' }
     }
     if (recursive && targets.length === 0) {
-      return { tier: 'high-risk', reason: 'command guard: recursive deletion with no statically visible target needs explicit review' }
+      return { tier: 'elevated', reason: 'command guard: recursive deletion with no statically visible target' }
     }
     if (targets.length > 1) {
-      return { tier: 'high-risk', reason: `command guard: batch deletion of ${targets.length} targets needs explicit review` }
+      return { tier: 'elevated', reason: `command guard: batch deletion of ${targets.length} targets` }
     }
-    return { tier: 'normal', reason: '' }
+    return { tier: 'elevated', reason: '' }
   }
 
   return { tier: 'normal', reason: '' }
@@ -183,23 +189,30 @@ export function classifyPwsh(rawCommand: string, report: PwshReport | undefined,
  * @returns the tier verdict with its model-facing reason.
  */
 export function classifyBash(facts: LexFacts, context: TierContext): GuardVerdict {
+  if (facts.git !== undefined) {
+    if (!facts.git.destructive) return { tier: 'normal', reason: '' }
+    return { tier: 'elevated', reason: facts.git.reason ?? 'command guard: a destructive git subcommand needs review' }
+  }
   const families = new Set<VerbFamily>(facts.families)
   if (families.size === 0) return { tier: 'normal', reason: '' }
   if (families.has('format')) {
-    return { tier: 'disaster', reason: 'command guard: disk-level operations (mkfs/fdisk/wipefs) are refused in every mode' }
+    return { tier: 'disaster', reason: 'command guard: disk-level operations (mkfs/fdisk/wipefs)' }
   }
   const protectedHit = hitsProtected(facts.literalPaths, context)
   if (facts.recursive && protectedHit !== undefined) {
-    return { tier: 'disaster', reason: `command guard: recursive deletion of the protected root "${protectedHit}" is refused in every mode` }
+    return { tier: 'disaster', reason: `command guard: recursive deletion of the protected root "${protectedHit}"` }
   }
   if (facts.recursive && facts.dynamic) {
-    return { tier: 'high-risk', reason: 'command guard: recursive deletion with dynamically resolved targets needs explicit review' }
+    return { tier: 'elevated', reason: 'command guard: recursive deletion with dynamically resolved targets' }
   }
   if (facts.recursive && facts.force && (facts.wildcard || findsUnbounded(facts.literalPaths, context) !== undefined)) {
-    return { tier: 'high-risk', reason: 'command guard: recursive forced deletion outside the workspace needs explicit review' }
+    return { tier: 'elevated', reason: 'command guard: recursive forced deletion outside the workspace' }
   }
   if (facts.findDelete) {
-    return { tier: 'high-risk', reason: 'command guard: find -delete needs explicit review' }
+    return { tier: 'elevated', reason: 'command guard: find -delete' }
+  }
+  if (families.has('delete')) {
+    return { tier: 'elevated', reason: '' }
   }
   return { tier: 'normal', reason: '' }
 }

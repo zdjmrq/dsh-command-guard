@@ -46,7 +46,7 @@ export type PreviewOutcome =
   | { kind: 'unpreviewable'; detail: string }
 
 /** The tier a destructive command classifies into. */
-export type GuardTier = 'disaster' | 'high-risk' | 'normal' | 'unparseable'
+export type GuardTier = 'disaster' | 'elevated' | 'normal' | 'unparseable'
 
 /** The classifier's verdict with its model-facing reason. */
 export interface GuardVerdict {

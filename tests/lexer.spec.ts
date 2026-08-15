@@ -98,6 +98,43 @@ describe('lexPwsh', () => {
   })
 })
 
+describe('lexPwsh git dispatch', () => {
+  it('dispatches a top-level git invocation instead of scanning inner words', () => {
+    const facts = lexPwsh('git rm -r --cached src')
+    expect(facts.git).toEqual({ subcommand: 'rm', destructive: false })
+    expect(facts.families).toEqual([])
+    expect(hasDestructiveSignal(facts)).toBe(false)
+  })
+
+  it('flags git rm without --cached as destructive', () => {
+    const facts = lexPwsh('git rm -r src')
+    expect(facts.git?.destructive).toBe(true)
+    expect(hasDestructiveSignal(facts)).toBe(true)
+  })
+
+  it('flags git clean and git reset --hard as destructive', () => {
+    expect(lexPwsh('git clean -fd').git?.destructive).toBe(true)
+    expect(lexPwsh('git reset --hard HEAD~1').git?.destructive).toBe(true)
+    expect(lexPwsh('git reset --soft HEAD~1').git?.destructive).toBe(false)
+  })
+
+  it('keeps non-destructive git subcommands silent', () => {
+    expect(hasDestructiveSignal(lexPwsh('git status'))).toBe(false)
+    expect(hasDestructiveSignal(lexPwsh('git log --oneline'))).toBe(false)
+  })
+
+  it('does not dispatch when git is not the top-level verb', () => {
+    const facts = lexPwsh('Get-Content file | git clean -fd')
+    expect(facts.git).toBeUndefined()
+  })
+
+  it('tolerates a command with no verb token at all', () => {
+    const facts = lexPwsh('-Recurse')
+    expect(facts.git).toBeUndefined()
+    expect(facts.recursive).toBe(true)
+  })
+})
+
 describe('lexBash', () => {
   it('collects delete verbs and flags', () => {
     const facts = lexBash('rm -rf /home/user/project')
@@ -136,5 +173,17 @@ describe('lexBash', () => {
 
   it('canonicalizes format verbs to the format family', () => {
     expect(lexBash('mkfs.ext4 /dev/sdb1').families).toContain('format')
+  })
+
+  it('dispatches top-level git invocations in the bash dialect too', () => {
+    expect(lexBash('git rm --cached x').git?.destructive).toBe(false)
+    expect(lexBash('git reset --hard HEAD~1').git?.destructive).toBe(true)
+    expect(hasDestructiveSignal(lexBash('git clean -xdf'))).toBe(true)
+  })
+
+  it('tolerates a bash command with no verb token at all', () => {
+    const facts = lexBash('-f')
+    expect(facts.git).toBeUndefined()
+    expect(facts.force).toBe(true)
   })
 })

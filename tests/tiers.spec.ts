@@ -69,24 +69,24 @@ describe('classifyPwsh', () => {
     }
   })
 
-  it('flags non-recursive .NET deletion of a protected root as high-risk', () => {
+  it('flags non-recursive .NET deletion of a protected root as elevated', () => {
     const verdict = classifyPwsh(
       '[System.IO.Directory]::Delete("C:\\Users\\me")',
       report({ memberCalls: ['Directory'] }),
       facts({ netDeleteCall: true, literalPaths: ['C:\\Users\\me'] }),
       CONTEXT,
     )
-    expect(verdict.tier).toBe('high-risk')
+    expect(verdict.tier).toBe('elevated')
   })
 
-  it('flags .NET deletion inside a protected root as high-risk', () => {
+  it('flags .NET deletion inside a protected root as elevated', () => {
     const verdict = classifyPwsh(
       '[System.IO.File]::Delete("C:\\Windows\\x.dll")',
       report({ memberCalls: ['File'] }),
       facts({ netDeleteCall: true, literalPaths: ['C:\\Windows\\x.dll'] }),
       CONTEXT,
     )
-    expect(verdict.tier).toBe('high-risk')
+    expect(verdict.tier).toBe('elevated')
   })
 
   it('passes .NET deletion of an ordinary file as normal', () => {
@@ -109,44 +109,44 @@ describe('classifyPwsh', () => {
     expect(verdict.tier).toBe('normal')
   })
 
-  it('passes recursive forced deletion fully inside the workspace as normal', () => {
+  it('flags recursive forced deletion fully inside the workspace as elevated (every delete verb reviews)', () => {
     const verdict = classifyPwsh(
       'Remove-Item C:\\ws\\sub -Recurse -Force',
       deleteCommand(['C:\\ws\\sub'], ['Recurse', 'Force']),
       facts({ families: ['delete'], recursive: true, force: true, literalPaths: ['C:\\ws\\sub'] }),
       CONTEXT,
     )
-    expect(verdict.tier).toBe('normal')
+    expect(verdict.tier).toBe('elevated')
   })
 
-  it('flags recycle-bin emptying as high-risk', () => {
+  it('flags recycle-bin emptying as elevated', () => {
     const verdict = classifyPwsh('Clear-RecycleBin', report(), facts({ families: ['recycle'], verbs: ['clear-recyclebin'] }), CONTEXT)
-    expect(verdict.tier).toBe('high-risk')
+    expect(verdict.tier).toBe('elevated')
   })
 
-  it('flags recursive deletion with dynamic targets as high-risk', () => {
+  it('flags recursive deletion with dynamic targets as elevated', () => {
     const verdict = classifyPwsh('Remove-Item $target -Recurse -Force', deleteCommand([], ['Recurse', 'Force'], ['$target']), facts({ families: ['delete'], recursive: true, force: true, dynamic: true }), CONTEXT)
-    expect(verdict.tier).toBe('high-risk')
+    expect(verdict.tier).toBe('elevated')
   })
 
-  it('flags recursive forced deletion outside the workspace as high-risk', () => {
+  it('flags recursive forced deletion outside the workspace as elevated', () => {
     const verdict = classifyPwsh('Remove-Item D:\\data -Recurse -Force', deleteCommand(['D:\\data'], ['Recurse', 'Force']), facts({ families: ['delete'], recursive: true, force: true, literalPaths: ['D:\\data'] }), CONTEXT)
-    expect(verdict.tier).toBe('high-risk')
+    expect(verdict.tier).toBe('elevated')
   })
 
-  it('flags recursive forced deletion with wildcards as high-risk', () => {
+  it('flags recursive forced deletion with wildcards as elevated', () => {
     const verdict = classifyPwsh('Remove-Item C:\\ws\\* -Recurse -Force', deleteCommand(['C:\\ws\\*'], ['Recurse', 'Force']), facts({ families: ['delete'], recursive: true, force: true, wildcard: true }), CONTEXT)
-    expect(verdict.tier).toBe('high-risk')
+    expect(verdict.tier).toBe('elevated')
   })
 
-  it('flags recursive deletion with no statically visible target as high-risk', () => {
+  it('flags recursive deletion with no statically visible target as elevated', () => {
     const verdict = classifyPwsh('Remove-Item -Recurse', deleteCommand([], ['Recurse']), facts({ families: ['delete'], recursive: true }), CONTEXT)
-    expect(verdict.tier).toBe('high-risk')
+    expect(verdict.tier).toBe('elevated')
   })
 
-  it('flags recursive forced deletion with a bare drive form as high-risk', () => {
+  it('flags recursive forced deletion with a bare drive form as elevated', () => {
     const verdict = classifyPwsh('Remove-Item D: -Recurse -Force', deleteCommand(['D:'], ['Recurse', 'Force']), facts({ families: ['delete'], recursive: true, force: true, literalPaths: ['D:'] }), CONTEXT)
-    expect(verdict.tier).toBe('high-risk')
+    expect(verdict.tier).toBe('elevated')
   })
 
   it('merges report verbs with lex families even when a report verb is non-destructive', () => {
@@ -157,17 +157,17 @@ describe('classifyPwsh', () => {
       ],
     })
     const verdict = classifyPwsh('Remove-Item C:\\ws\\x.txt', mixed, facts({ families: ['delete'], literalPaths: ['C:\\ws\\x.txt'] }), CONTEXT)
-    expect(verdict.tier).toBe('normal')
+    expect(verdict.tier).toBe('elevated')
   })
 
-  it('flags batch deletion as high-risk', () => {
+  it('flags batch deletion as elevated', () => {
     const verdict = classifyPwsh('Remove-Item a.txt, b.txt', deleteCommand(['a.txt', 'b.txt']), facts({ families: ['delete'], literalPaths: ['a.txt', 'b.txt'] }), CONTEXT)
-    expect(verdict.tier).toBe('high-risk')
+    expect(verdict.tier).toBe('elevated')
   })
 
-  it('passes a single non-recursive deletion as normal', () => {
+  it('flags a single non-recursive deletion as elevated (every delete verb reviews)', () => {
     const verdict = classifyPwsh('Remove-Item C:\\ws\\old.txt', deleteCommand(['C:\\ws\\old.txt']), facts({ families: ['delete'], literalPaths: ['C:\\ws\\old.txt'] }), CONTEXT)
-    expect(verdict.tier).toBe('normal')
+    expect(verdict.tier).toBe('elevated')
   })
 
   it('detects recursion from the AST report alone', () => {
@@ -177,7 +177,7 @@ describe('classifyPwsh', () => {
       facts({ families: ['delete'], literalPaths: ['C:\\ws\\dir'] }),
       CONTEXT,
     )
-    expect(verdict.tier).toBe('normal')
+    expect(verdict.tier).toBe('elevated')
   })
 
   it('fails closed as unparseable without a readable report', () => {
@@ -189,6 +189,11 @@ describe('classifyPwsh', () => {
 
   it('fails closed as unparseable without a readable report and no lex recursion', () => {
     const verdict = classifyPwsh('Remove-Item C:\\ws\\x', undefined, facts({ families: ['delete'], literalPaths: ['C:\\ws\\x'] }), CONTEXT)
+    expect(verdict.tier).toBe('unparseable')
+  })
+
+  it('fails closed as unparseable on dynamic execution verbs', () => {
+    const verdict = classifyPwsh('iex (Get-Content script.ps1)', report(), facts({ dynamicVerb: true, verbs: ['iex'] }), CONTEXT)
     expect(verdict.tier).toBe('unparseable')
   })
 })
@@ -207,23 +212,51 @@ describe('classifyBash', () => {
     expect(verdict.tier).toBe('disaster')
   })
 
-  it('flags recursive dynamic deletion as high-risk', () => {
+  it('flags recursive dynamic deletion as elevated', () => {
     const verdict = classifyBash(facts({ families: ['delete'], verbs: ['rm'], recursive: true, dynamic: true }), CONTEXT)
-    expect(verdict.tier).toBe('high-risk')
+    expect(verdict.tier).toBe('elevated')
   })
 
-  it('flags recursive forced deletion outside the workspace as high-risk', () => {
+  it('flags recursive forced deletion outside the workspace as elevated', () => {
     const verdict = classifyBash(facts({ families: ['delete'], verbs: ['rm'], recursive: true, force: true, literalPaths: ['/home/other'] }), CONTEXT)
-    expect(verdict.tier).toBe('high-risk')
+    expect(verdict.tier).toBe('elevated')
   })
 
-  it('flags find -delete as high-risk', () => {
+  it('flags find -delete as elevated', () => {
     const verdict = classifyBash(facts({ families: ['delete'], verbs: ['find'], findDelete: true }), CONTEXT)
-    expect(verdict.tier).toBe('high-risk')
+    expect(verdict.tier).toBe('elevated')
   })
 
-  it('passes a single non-recursive deletion as normal', () => {
+  it('flags a single non-recursive bash deletion as elevated', () => {
     const verdict = classifyBash(facts({ families: ['delete'], verbs: ['rm'], literalPaths: ['/ws/old.txt'] }), CONTEXT)
+    expect(verdict.tier).toBe('elevated')
+  })
+})
+
+describe('git dispatch tiers', () => {
+  it('classifies git rm --cached as normal (index-only)', () => {
+    expect(classifyPwsh('git rm --cached x', report(), facts({ git: { subcommand: 'rm', destructive: false } }), CONTEXT).tier).toBe('normal')
+  })
+
+  it('classifies git rm without --cached as elevated', () => {
+    const verdict = classifyPwsh('git rm -r x', report(), facts({ git: { subcommand: 'rm', destructive: true, reason: 'command guard: git rm without --cached removes working-tree files' } }), CONTEXT)
+    expect(verdict.tier).toBe('elevated')
+    expect(verdict.reason).toContain('git rm without --cached')
+  })
+
+  it('classifies git clean and git reset --hard as elevated in both dialects', () => {
+    expect(classifyPwsh('git clean -fd', report(), facts({ git: { subcommand: 'clean', destructive: true } }), CONTEXT).tier).toBe('elevated')
+    expect(classifyBash(facts({ git: { subcommand: 'reset', destructive: true } }), CONTEXT).tier).toBe('elevated')
+  })
+
+  it('classifies a non-destructive git subcommand as normal', () => {
+    expect(classifyPwsh('git status', report(), facts({ git: { subcommand: 'status', destructive: false } }), CONTEXT).tier).toBe('normal')
+    expect(classifyPwsh('git reset --soft HEAD~1', report(), facts({ git: { subcommand: 'reset', destructive: false } }), CONTEXT).tier).toBe('normal')
+    expect(classifyBash(facts({ git: { subcommand: 'status', destructive: false } }), CONTEXT).tier).toBe('normal')
+  })
+
+  it('classifies an unknown bash family as normal', () => {
+    const verdict = classifyBash(facts({ families: ['recycle'], verbs: ['clear-recyclebin'] }), CONTEXT)
     expect(verdict.tier).toBe('normal')
   })
 })

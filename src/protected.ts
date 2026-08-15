@@ -1,10 +1,10 @@
 /**
  * Protected-path predicates: the registry of absolute roots whose recursive
- * deletion (or mirror-overwrite) is disaster-tier in every sandbox mode, plus
- * the containment helper the high-risk tier uses to decide "inside the
- * workspace". All comparisons are case-insensitive on Windows path forms and
- * byte-exact otherwise, decided from the path text itself so the same code
- * classifies both PowerShell and bash targets on any host.
+ * deletion (or mirror-overwrite) is disaster-tier, plus the containment
+ * helper the classifier uses to decide "inside the workspace". All
+ * comparisons are case-insensitive on Windows path forms and byte-exact
+ * otherwise, decided from the path text itself so the same code classifies
+ * both PowerShell and bash targets on any host.
  *
  * @module @deepseek-ai/dsh-command-guard/protected
  */

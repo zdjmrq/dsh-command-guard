@@ -121,6 +121,11 @@ describe('nodeSpawner', () => {
     expect(result.spawnError).toBeDefined()
     expect(result.exitCode).toBeNull()
   })
+
+  it('reports an empty argv as a spawn error', async () => {
+    const result = await nodeSpawner([], { timeoutMs: 5000 })
+    expect(result).toMatchObject({ stdout: '', stderr: '', exitCode: null, timedOut: false, spawnError: 'argv is empty' })
+  })
 })
 
 describe('PwshAnalyzer', () => {

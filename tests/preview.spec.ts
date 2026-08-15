@@ -64,11 +64,11 @@ describe('parseEnumeration', () => {
 })
 
 describe('renderPreviewSummary', () => {
-  it('renders counts, samples, and the confirmation instruction', () => {
+  it('renders counts, samples, and the scope-verification instruction', () => {
     const text = renderPreviewSummary(2, 1, ['C:\\ws\\sub\\b.txt'], false)
     expect(text).toContain('3 objects (2 files, 1 directories)')
     expect(text).toContain('"C:\\ws\\sub\\b.txt"')
-    expect(text).toContain('re-send the identical command to confirm execution')
+    expect(text).toContain('verify this scope matches your intent')
   })
 
   it('renders the empty-sample form and truncation marker', () => {
@@ -84,7 +84,7 @@ describe('renderPreviewSummary', () => {
 
   it('previewDenyReason reuses the summary text', () => {
     const reason = previewDenyReason({ kind: 'previewed', objectCount: 1, fileCount: 1, directoryCount: 0, samples: ['a'], truncated: false })
-    expect(reason).toContain('re-send the identical command to confirm execution')
+    expect(reason).toContain('verify this scope matches your intent')
   })
 })
 

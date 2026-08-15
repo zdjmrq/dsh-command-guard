@@ -12,6 +12,7 @@
  * @module @deepseek-ai/dsh-command-guard/lexer
  */
 
+import { analyzeGit, isGitInvocation, type GitFacts } from './git.ts'
 import {
   CMD_FORCE_SWITCHES,
   CMD_MIRROR_SWITCHES,
@@ -50,6 +51,8 @@ export interface LexFacts {
   dynamicVerb: boolean
   /** Bash `find` appears with `-delete`. */
   findDelete: boolean
+  /** Top-level `git` dispatch facts; set only when `git` heads the command. */
+  git?: GitFacts
 }
 
 const EMPTY_FACTS: LexFacts = {
@@ -133,6 +136,15 @@ export function lexPwsh(command: string): LexFacts {
   if (command.includes('$') || command.includes('${') || command.includes('`')) facts.dynamic = true
   if (NET_DELETE_CALL.test(command)) facts.netDeleteCall = true
   const tokens = tokenize(command)
+  // Top-level-verb dispatch: a leading `git` routes into subcommand semantics
+  // (`git rm --cached` must not read as a delete verb). Non-leading git words
+  // fall through to the generic scan, which errs toward flagging.
+  const firstVerbIndex = tokens.findIndex(token => !token.startsWith('-') && !token.startsWith('/'))
+  const firstVerb = firstVerbIndex >= 0 ? tokens[firstVerbIndex] : undefined
+  if (firstVerb !== undefined && isGitInvocation([unquote(firstVerb).toLowerCase()])) {
+    facts.git = analyzeGit(tokens.slice(firstVerbIndex + 1))
+    return facts
+  }
   const verbs: string[] = []
   const switches = new Set<string>()
   for (const token of tokens) {
@@ -192,6 +204,12 @@ export function lexBash(command: string): LexFacts {
   const facts: LexFacts = { ...EMPTY_FACTS, families: [], verbs: [], literalPaths: [] }
   if (command.includes('$') || command.includes('`') || command.includes('$((')) facts.dynamic = true
   const tokens = tokenize(command)
+  const firstVerbIndex = tokens.findIndex(token => !token.startsWith('-') && !token.startsWith('/'))
+  const firstVerb = firstVerbIndex >= 0 ? tokens[firstVerbIndex] : undefined
+  if (firstVerb !== undefined && isGitInvocation([unquote(firstVerb).toLowerCase()])) {
+    facts.git = analyzeGit(tokens.slice(firstVerbIndex + 1))
+    return facts
+  }
   for (const token of tokens) {
     const bare = unquote(token)
     if (bare.length === 0) continue
@@ -229,7 +247,7 @@ export function lexBash(command: string): LexFacts {
  * @param facts - the lex result.
  */
 export function hasDestructiveSignal(facts: LexFacts): boolean {
-  return facts.families.length > 0 || facts.netDeleteCall || facts.diskpartClean || facts.robocopyMir || facts.dynamicVerb
+  return facts.families.length > 0 || facts.netDeleteCall || facts.diskpartClean || facts.robocopyMir || facts.dynamicVerb || facts.git?.destructive === true
 }
 
 export { EXTENDED_ROOT_FORM, UNC_ROOT_FORM, DRIVE_FORM }

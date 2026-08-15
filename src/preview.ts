@@ -6,7 +6,8 @@
  * by PowerShell itself, not by the guard's parsing. `What if:` lines give the
  * concrete target list; recursive directory targets get one extra read-only
  * subtree enumeration (the dry run alone prints only the top directory), and
- * any resolved target that IS a protected root refuses outright.
+ * any resolved target that IS a protected root reports `protected-hit` (the
+ * engine upgrades it to the disaster tier for the review).
  *
  * The command runs once with WhatIf on, so non-delete side effects before a
  * delete cmdlet DO execute during the preview — a documented tradeoff of
@@ -81,11 +82,21 @@ export function parseWhatIfLines(stdout: string): DryRunTarget[] {
   for (const line of stdout.split(/\r?\n/)) {
     const match = WHATIF_LINE.exec(line)
     if (match !== null) {
-      targets.push({ op: match[1]!, target: match[2]! })
+      const op = match[1]
+      const target = match[2]
+      /* v8 ignore next -- both capture groups always exist for a matching line; the check only guards hostile regex drift */
+      if (op === undefined || target === undefined) continue
+      targets.push({ op, target })
       continue
     }
     const zhMatch = WHATIF_LINE_ZH.exec(line)
-    if (zhMatch !== null) targets.push({ op: zhMatch[2]!, target: zhMatch[1]! })
+    if (zhMatch !== null) {
+      const op = zhMatch[2]
+      const target = zhMatch[1]
+      /* v8 ignore next -- both capture groups always exist for a matching line; the check only guards hostile regex drift */
+      if (op === undefined || target === undefined) continue
+      targets.push({ op, target })
+    }
   }
   return targets
 }
@@ -131,7 +142,7 @@ export function renderPreviewSummary(fileCount: number, directoryCount: number, 
   const sampleText = samples.length > 0
     ? `; first targets: ${samples.map(sample => `"${sample}"`).join(', ')}${truncated ? ', …' : ''}`
     : ''
-  return head + sampleText + ' — verify this scope matches your intent, then re-send the identical command to confirm execution'
+  return head + sampleText + ' — verify this scope matches your intent'
 }
 
 /**

@@ -34,6 +34,72 @@ index 706ee3202a..be02b3bcb1 100644
      "@deepseek-ai/dsh-api-gateway": "workspace:^",
      "@deepseek-ai/dsh-llm": "workspace:^",
      "@deepseek-ai/dsh-llm-deepseek": "workspace:^",
+diff --git a/packages/client/ui-conversation/src/client/contract/slots.ts b/packages/client/ui-conversation/src/client/contract/slots.ts
+index 21259146a7..bfc1f0be0b 100644
+--- a/packages/client/ui-conversation/src/client/contract/slots.ts
++++ b/packages/client/ui-conversation/src/client/contract/slots.ts
+@@ -625,6 +625,11 @@ export class PendingApproval {
+     return this.wait.payload.reason
+   }
+ 
++  /** The asker's danger marking (red styling), forwarded from the carrier payload. */
++  get severity(): 'danger' | undefined {
++    return this.wait.payload.severity
++  }
++
+   /** The paired tool call's id when the ask names one (command-line lookup key), forwarded from the carrier payload. */
+   get callId(): string | undefined {
+     return this.wait.payload.callId
+diff --git a/packages/client/ui-conversation/src/client/skeleton/ApprovalPanel.module.css b/packages/client/ui-conversation/src/client/skeleton/ApprovalPanel.module.css
+index 87cdc07a0c..c541c69e11 100644
+--- a/packages/client/ui-conversation/src/client/skeleton/ApprovalPanel.module.css
++++ b/packages/client/ui-conversation/src/client/skeleton/ApprovalPanel.module.css
+@@ -49,6 +49,22 @@
+   background: var(--dsw-alias-state-warn-primary);
+ }
+ 
++/* Danger severity (red): disaster-tier confirmations — the asker marked the
++   request `severity: 'danger'`, so the card border, band, and dot switch from
++   the amber warn family to the error family; no hardcoded colors. */
++.cardDanger {
++  border-color: var(--dsw-alias-state-error-secondary);
++}
++
++.stripDanger {
++  background: var(--dsw-alias-state-error-tertiary);
++  color: var(--dsw-alias-state-error-primary);
++}
++
++.dotDanger {
++  background: var(--dsw-alias-state-error-primary);
++}
++
+ /* Scroll region: an agent's justification and its command are unbounded model
+    text (a one-line `cd` or a 40-line heredoc), and the seat sits in a
+    fixed-height column — uncapped, a long command pushed the action row past
+diff --git a/packages/client/ui-conversation/src/client/skeleton/ApprovalPanel.tsx b/packages/client/ui-conversation/src/client/skeleton/ApprovalPanel.tsx
+index e700b112b4..dd8e3ba8c8 100644
+--- a/packages/client/ui-conversation/src/client/skeleton/ApprovalPanel.tsx
++++ b/packages/client/ui-conversation/src/client/skeleton/ApprovalPanel.tsx
+@@ -58,14 +58,15 @@ function ApprovalFlow({ pending, command, t }: {
+   // lands; until then the buttons must not re-fire. An answer failure
+   // (rejected receipt / transport) re-arms them for retry.
+   const [answered, setAnswered] = useState(false)
++  const danger = pending.severity === 'danger'
+   const answer = (outcome: 'allowed-once' | 'rejected'): void => {
+     setAnswered(true)
+     void pending.answer(outcome).catch(() => { setAnswered(false) })
+   }
+   return (
+-    <div className={css.root} data-approval-key={pending.key}>
+-      <div className={css.card}>
+-        <div className={css.strip}><span className={css.dot} />{t('approval.waiting')}</div>
++    <div className={css.root} data-approval-key={pending.key} {...danger ? { 'data-approval-severity': 'danger' } : {}}>
++      <div className={danger ? `${css.card} ${css.cardDanger}` : css.card}>
++        <div className={danger ? `${css.strip} ${css.stripDanger}` : css.strip}><span className={danger ? `${css.dot} ${css.dotDanger}` : css.dot} />{t('approval.waiting')}</div>
+         {/* Tab stop: the region scrolls once the command passes the cap and
+             holds nothing focusable of its own, so without one a keyboard-only
+             user cannot reach the command's tail before answering. */}
 diff --git a/packages/client/ui-conversation/src/client/skeleton/PermissionSelect.tsx b/packages/client/ui-conversation/src/client/skeleton/PermissionSelect.tsx
 index 5230f59835..f30fdd34ba 100644
 --- a/packages/client/ui-conversation/src/client/skeleton/PermissionSelect.tsx
@@ -62,6 +128,37 @@ index 5230f59835..f30fdd34ba 100644
    [FULL_ACCESS]: (
      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
        <path d={shieldOutline} stroke="currentColor" strokeWidth="1.31831" strokeLinejoin="round" />
+diff --git a/packages/core/tools/src/index.ts b/packages/core/tools/src/index.ts
+index 377015feb3..39375ba1f9 100644
+--- a/packages/core/tools/src/index.ts
++++ b/packages/core/tools/src/index.ts
+@@ -582,13 +582,15 @@ export type ToolExecutionResult = ToolExecutionSuccess | ToolExecutionFailure
+ /**
+  * Pre-dispatch decision. `allow` runs the call; `deny` materializes an error;
+  * `ask` runs only after an approval service returns `allowed-once` and otherwise
+- * denies. Input rewriting is excluded because arguments are already logged and
+- * presented.
++ * denies. An `ask` may carry `severity: 'danger'` so the approval surface can
++ * mark the request (e.g. red for disaster-tier deletions) distinctly from an
++ * ordinary escalation. Input rewriting is excluded because arguments are
++ * already logged and presented.
+  */
+ export type PreToolDecision =
+   | { kind: 'allow' }
+   | { kind: 'deny'; reason: string }
+-  | { kind: 'ask'; reason?: string }
++  | { kind: 'ask'; reason?: string; severity?: 'danger' }
+ 
+ /**
+  * Post-dispatch decision: accept, replace one projection, attach context for the
+@@ -1708,6 +1710,7 @@ export class ToolRuntime extends Service {
+       toolName: exec.name,
+       callId: exec.callId,
+       ...ask.reason !== undefined ? { reason: ask.reason } : {},
++      ...ask.severity !== undefined ? { severity: ask.severity } : {},
+       signal: exec.signal,
+     })
+     switch (outcome) {
 diff --git a/packages/fs/fs-sandbox/src/index.ts b/packages/fs/fs-sandbox/src/index.ts
 index 17205a8eaf..ac29d43f4d 100644
 --- a/packages/fs/fs-sandbox/src/index.ts
@@ -84,6 +181,60 @@ index 17205a8eaf..ac29d43f4d 100644
      if (mode === 'read-only') {
        throw new FsError(`cannot write "${target.displayPath}": file access denied under read-only mode`, 'FS_SANDBOX_DENIED')
      }
+diff --git a/packages/host/apiproxy/src/api-proxy.ts b/packages/host/apiproxy/src/api-proxy.ts
+index bda99362b6..3333e9c407 100644
+--- a/packages/host/apiproxy/src/api-proxy.ts
++++ b/packages/host/apiproxy/src/api-proxy.ts
+@@ -683,6 +683,7 @@ interface PendingApproval {
+   toolName: string
+   callId?: CallId
+   reason?: string
++  severity?: 'danger'
+   resolve(outcome: ApprovalOutcome): void
+ }
+ 
+@@ -697,6 +698,7 @@ function requestedFrame(pending: PendingApproval): RpcRequest<MuxFrame> {
+       toolName: pending.toolName,
+       ...pending.callId === undefined ? {} : { callId: pending.callId },
+       ...pending.reason === undefined ? {} : { reason: pending.reason },
++      ...pending.severity === undefined ? {} : { severity: pending.severity },
+     },
+   }
+ }
+@@ -1478,6 +1480,7 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
+           toolName: req.toolName,
+           ...req.callId === undefined ? {} : { callId: req.callId },
+           ...req.reason === undefined ? {} : { reason: req.reason },
++          ...req.severity === undefined ? {} : { severity: req.severity },
+           resolve: settle,
+         }
+         pendingApprovals.set(pending.rpcId, pending)
+diff --git a/packages/host/apiproxy/src/api/events.schema.ts b/packages/host/apiproxy/src/api/events.schema.ts
+index d4e66c8948..a938456d97 100644
+--- a/packages/host/apiproxy/src/api/events.schema.ts
++++ b/packages/host/apiproxy/src/api/events.schema.ts
+@@ -43,7 +43,7 @@ const messageSchema = z.object({
+ export const muxFrameSchema = z.discriminatedUnion('type', [
+   z.object({ type: z.literal('session/event'), sessionId: sessionIdSchema, event: sessionEventSchema, view: toolEventViewSchema.optional() }),
+   z.object({ type: z.literal('session/subscribed'), sessionId: sessionIdSchema, lastSeq: z.number().int() }),
+-  z.object({ type: z.literal('approval/requested'), sessionId: sessionIdSchema, approvalId: approvalRequestIdSchema, toolName: z.string(), callId: z.string().optional(), reason: z.string().optional() }),
++  z.object({ type: z.literal('approval/requested'), sessionId: sessionIdSchema, approvalId: approvalRequestIdSchema, toolName: z.string(), callId: z.string().optional(), reason: z.string().optional(), severity: z.literal('danger').optional() }),
+   z.object({ type: z.literal('approval/resolved'), sessionId: sessionIdSchema, approvalId: approvalRequestIdSchema, outcome: z.union([z.literal('allowed-once'), z.literal('rejected'), z.literal('cancelled'), z.literal('unavailable')]) }),
+   // Non-empty by wire contract: the user-questions service rejects empty
+   // batches at ask() (EMPTY_QUESTIONS), so an empty frame is host breakage
+diff --git a/packages/host/apiproxy/src/api/events.ts b/packages/host/apiproxy/src/api/events.ts
+index 0ff088745f..b37783660d 100644
+--- a/packages/host/apiproxy/src/api/events.ts
++++ b/packages/host/apiproxy/src/api/events.ts
+@@ -69,7 +69,7 @@ export interface EventsApi {
+ export type MuxFrame =
+   | { type: 'session/event'; sessionId: SessionId; event: SessionEvent; view?: ToolEventView }
+   | { type: 'session/subscribed'; sessionId: SessionId; lastSeq: number }
+-  | { type: 'approval/requested'; sessionId: SessionId; approvalId: ApprovalRequestId; toolName: string; callId?: CallId; reason?: string }
++  | { type: 'approval/requested'; sessionId: SessionId; approvalId: ApprovalRequestId; toolName: string; callId?: CallId; reason?: string; severity?: 'danger' }
+   | { type: 'approval/resolved'; sessionId: SessionId; approvalId: ApprovalRequestId; outcome: ApprovalOutcome }
+   | { type: 'question/requested'; sessionId: SessionId; questions: AskUserQuestionItem[] }
+   | { type: 'question/resolved'; sessionId: SessionId; questionRpcId: RpcId; outcome: 'answered' | 'cancelled' }
 diff --git a/packages/interaction/permission-presets/src/index.ts b/packages/interaction/permission-presets/src/index.ts
 index fee29c2644..831dba81a4 100644
 --- a/packages/interaction/permission-presets/src/index.ts
@@ -99,6 +250,38 @@ index fee29c2644..831dba81a4 100644
        'danger-full-access': {
          sandbox: 'danger-full-access', approval: 'never',
          name: 'danger-full-access', description: 'Full file access without approval prompts.',
+diff --git a/packages/interaction/user-approval/src/index.ts b/packages/interaction/user-approval/src/index.ts
+index b0618f6b3d..8444a69156 100644
+--- a/packages/interaction/user-approval/src/index.ts
++++ b/packages/interaction/user-approval/src/index.ts
+@@ -46,6 +46,7 @@ declare module '@deepseek-ai/dsh-session/types' {
+       toolName: string
+       callId?: CallId
+       reason?: string
++      severity?: 'danger'
+     }
+     /**
+      * The outcome of a prior `approval/asked` (same `id`) — log-only audit.
+@@ -166,6 +167,11 @@ export interface ApprovalRequest {
+   readonly callId?: CallId
+   /** The asker's human-readable explanation of WHY it is asking. */
+   readonly reason?: string
++  /**
++   * The asker's severity marking: `'danger'` lets the approval surface render
++   * the request with danger styling (e.g. red for disaster-tier deletions).
++   */
++  readonly severity?: 'danger'
+   /**
+    * Aborting withdraws the question: the request settles `'cancelled'`
+    * immediately and a late answer from a still-pending answerer is discarded.
+@@ -269,6 +275,7 @@ export class ApprovalService extends Service {
+       toolName: req.toolName,
+       ...req.callId !== undefined ? { callId: req.callId } : {},
+       ...req.reason !== undefined ? { reason: req.reason } : {},
++      ...req.severity !== undefined ? { severity: req.severity } : {},
+     })
+     const outcome = await this.decide(req, session)
+     session.append('approval/decided', { id, outcome })
 diff --git a/packages/sandbox/sandbox-policy/src/index.ts b/packages/sandbox/sandbox-policy/src/index.ts
 index eee5a43669..723860a98d 100644
 --- a/packages/sandbox/sandbox-policy/src/index.ts

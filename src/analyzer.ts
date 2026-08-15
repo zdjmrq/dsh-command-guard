@@ -70,8 +70,13 @@ export async function nodeSpawner(argv: string[], options: SpawnOptions): Promis
       resolve(result)
     }
     let child: ReturnType<typeof spawn>
+    const executable = argv[0]
+    if (executable === undefined) {
+      settle({ stdout: '', stderr: '', exitCode: null, timedOut: false, spawnError: 'argv is empty' })
+      return
+    }
     try {
-      child = spawn(argv[0]!, argv.slice(1), {
+      child = spawn(executable, argv.slice(1), {
         env: { ...process.env, ...options.env },
         stdio: ['ignore', 'pipe', 'pipe'],
       })

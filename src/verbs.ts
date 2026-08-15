@@ -20,7 +20,7 @@ const PWSH_FORMAT_VERBS: ReadonlySet<string> = new Set([
   'format', 'format-volume', 'clear-disk', 'initialize-disk', 'remove-partition',
 ])
 
-/** The recycle verb — high-risk in every mode. */
+/** The recycle verb — elevated tier. */
 const PWSH_RECYCLE_VERBS: ReadonlySet<string> = new Set(['clear-recyclebin'])
 
 /** Bash-dialect delete verbs. */
