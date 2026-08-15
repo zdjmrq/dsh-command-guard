@@ -161,8 +161,6 @@ window), `analyzeTimeoutMs`, `previewTimeoutMs`, `previewSampleLimit`,
   (one-click backend shutdown / frontend refresh) merged into one cumulative
   `install.patch` — apply once and everything is wired, for setups that want
   several custom plugins;
-- [dsh-restart-plugin](https://github.com/zdjmrq/dsh-restart-plugin) — the
-  "shut down backend / refresh frontend" plugin;
 - [deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) — the
   official upstream.
 
