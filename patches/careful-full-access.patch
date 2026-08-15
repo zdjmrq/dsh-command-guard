@@ -1,0 +1,667 @@
+diff --git a/packages/bundle/base/cordis.patch.yml b/packages/bundle/base/cordis.patch.yml
+index e9567d9206..90ac23f696 100644
+--- a/packages/bundle/base/cordis.patch.yml
++++ b/packages/bundle/base/cordis.patch.yml
+@@ -200,10 +200,19 @@
+           workspace-write:
+             sandbox: workspace-write
+             approval: ask
++          careful-full-access:
++            sandbox: careful-full-access
++            approval: ask
+           danger-full-access:
+             sandbox: danger-full-access
+             approval: never
+ 
++    # The command guard: pre-execute deletion analysis (disaster deny +
++    # high-risk ask) and the careful-full-access preview/model-check
++    # pipeline. Host plane: every session's shell calls pass through it.
++    - id: command-guard
++      name: 'dsh-command-guard'
++
+     - id: shell-env
+       name: '@deepseek-ai/dsh-shell-env'
+ 
+diff --git a/packages/bundle/base/package.json b/packages/bundle/base/package.json
+index 706ee3202a..be02b3bcb1 100644
+--- a/packages/bundle/base/package.json
++++ b/packages/bundle/base/package.json
+@@ -59,6 +59,7 @@
+     "@deepseek-ai/dsh-fs-sandbox": "workspace:^",
+     "@deepseek-ai/dsh-goal": "workspace:^",
+     "@deepseek-ai/dsh-goal-round-driver": "workspace:^",
++    "dsh-command-guard": "workspace:^",
+     "@deepseek-ai/dsh-api-gateway": "workspace:^",
+     "@deepseek-ai/dsh-llm": "workspace:^",
+     "@deepseek-ai/dsh-llm-deepseek": "workspace:^",
+diff --git a/packages/client/ui-conversation/src/client/skeleton/PermissionSelect.tsx b/packages/client/ui-conversation/src/client/skeleton/PermissionSelect.tsx
+index 5230f59835..f30fdd34ba 100644
+--- a/packages/client/ui-conversation/src/client/skeleton/PermissionSelect.tsx
++++ b/packages/client/ui-conversation/src/client/skeleton/PermissionSelect.tsx
+@@ -10,7 +10,8 @@ import css from './PermissionSelect.module.css'
+ const FULL_ACCESS = 'danger-full-access'
+ 
+ /* Shield glyphs (design set 1556): check = read-only, pencil = workspace
+-   write, exclamation = full access. currentColor so the trigger and menu
++   write, eye = careful full access (the deletion preview the mode runs),
++   exclamation = full access. currentColor so the trigger and menu
+    rows tint them with their own text color. */
+ 
+ const shieldOutline = 'M8.20554 0.899994L14.7901 3.36857V7.01026C14.7901 12 11.0466 14.2103 8.20554 15.3C5.36446 14.2103 1.62012 12 1.62012 7.01026V3.36857L8.20554 0.899994Z'
+@@ -31,6 +32,13 @@ const permissionGlyphs = {
+       <path d="M8.14852 14.1308L7.33925 15.4976C7.22458 15.6912 7.42245 15.9194 7.63037 15.8333L9.09785 15.2254L15.0399 10.0719L14.0905 8.97733L8.14852 14.1308Z" fill="currentColor" />
+     </svg>
+   ),
++  'careful-full-access': (
++    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
++      <path d={shieldOutline} stroke="currentColor" strokeWidth="1.31831" strokeLinejoin="round" />
++      <path d="M4.1 8.05C4.93 6.36 6.31 5.45 8.2 5.45C10.09 5.45 11.47 6.36 12.3 8.05C11.47 9.74 10.09 10.65 8.2 10.65C6.31 10.65 4.93 9.74 4.1 8.05Z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round" />
++      <path d="M8.2 7.2A0.85 0.85 0 1 0 8.2 8.9A0.85 0.85 0 1 0 8.2 7.2Z" fill="currentColor" />
++    </svg>
++  ),
+   [FULL_ACCESS]: (
+     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+       <path d={shieldOutline} stroke="currentColor" strokeWidth="1.31831" strokeLinejoin="round" />
+diff --git a/packages/fs/fs-sandbox/src/index.ts b/packages/fs/fs-sandbox/src/index.ts
+index 17205a8eaf..ac29d43f4d 100644
+--- a/packages/fs/fs-sandbox/src/index.ts
++++ b/packages/fs/fs-sandbox/src/index.ts
+@@ -35,7 +35,7 @@ import { LocalFileSystem } from '@deepseek-ai/dsh-fs-local'
+ import type { Config as LocalConfig } from '@deepseek-ai/dsh-fs-local'
+ import { FsError } from '@deepseek-ai/dsh-fs'
+ import type { FsEditOutcome, FsEditRequest, FsTarget, FsVersion, FsWriteIntent, FsWriteOutcome } from '@deepseek-ai/dsh-fs'
+-import { writableRoots } from '@deepseek-ai/dsh-sandbox'
++import { isUnconfinedMode, writableRoots } from '@deepseek-ai/dsh-sandbox'
+ import type { SandboxExecutionPolicy, SandboxMode } from '@deepseek-ai/dsh-sandbox'
+ import type {} from '@deepseek-ai/dsh-sandbox-policy'
+ import { isPathUnder } from './containment.ts'
+@@ -126,7 +126,7 @@ export class SandboxedFileSystem extends LocalFileSystem {
+   private async checkedTarget(target: FsTarget, sandboxPolicy?: SandboxExecutionPolicy): Promise<FsTarget> {
+     const policy = sandboxPolicy ?? this.ctx.sandboxPolicy.resolve()
+     const { mode } = policy
+-    if (mode === 'danger-full-access') return target
++    if (isUnconfinedMode(mode)) return target
+     if (mode === 'read-only') {
+       throw new FsError(`cannot write "${target.displayPath}": file access denied under read-only mode`, 'FS_SANDBOX_DENIED')
+     }
+diff --git a/packages/interaction/permission-presets/src/index.ts b/packages/interaction/permission-presets/src/index.ts
+index fee29c2644..831dba81a4 100644
+--- a/packages/interaction/permission-presets/src/index.ts
++++ b/packages/interaction/permission-presets/src/index.ts
+@@ -169,6 +169,10 @@ export class PermissionPresetService extends Service {
+         sandbox: 'workspace-write', approval: 'ask',
+         name: 'workspace-write', description: 'Write inside the workspace and permitted temporary directories; wider retries require approval.',
+       },
++      'careful-full-access': {
++        sandbox: 'careful-full-access', approval: 'ask',
++        name: 'careful-full-access', description: 'Full file access; every deletion command runs the command-guard preview and model-check confirmation.',
++      },
+       'danger-full-access': {
+         sandbox: 'danger-full-access', approval: 'never',
+         name: 'danger-full-access', description: 'Full file access without approval prompts.',
+diff --git a/packages/sandbox/sandbox-policy/src/index.ts b/packages/sandbox/sandbox-policy/src/index.ts
+index eee5a43669..723860a98d 100644
+--- a/packages/sandbox/sandbox-policy/src/index.ts
++++ b/packages/sandbox/sandbox-policy/src/index.ts
+@@ -43,6 +43,8 @@ function renderPolicyContext(policy: SandboxExecutionPolicy): string {
+       return `Current DSH file policy: workspace-write. Any available operation enforced by the DSH file sandbox may modify files under the session workspace: ${JSON.stringify(policy.workspaceRoot)}. Some platform temporary areas may also be writable.`
+     case 'danger-full-access':
+       return 'Current DSH file policy: danger-full-access. The DSH file sandbox does not restrict file modifications by available operations.'
++    case 'careful-full-access':
++      return 'Current DSH file policy: careful-full-access. File modifications are unrestricted, and every deletion command runs through the command guard preview and model-check confirmation.'
+     /* v8 ignore next 4 -- SandboxMode is a typed same-process closed union; this branch is only the static exhaustiveness guard. */
+     default: {
+       const mode: never = policy.mode
+@@ -91,7 +93,7 @@ export interface SandboxPolicyRequest {
+ export class SandboxPolicyService extends Service {
+   // Inline schema call: the config catalog walks `static Config` statically.
+   static Config: z<Config> = z.object({
+-    mode: z.union(['read-only', 'workspace-write', 'danger-full-access'] as const).default('read-only'),
++    mode: z.union(['read-only', 'workspace-write', 'careful-full-access', 'danger-full-access'] as const).default('read-only'),
+     // No schema default: process.cwd() is resolved in the constructor so the
+     // stored root is always absolute regardless of how it was supplied.
+     workspaceRoot: z.string(),
+diff --git a/packages/sandbox/sandbox-policy/src/session-mode.ts b/packages/sandbox/sandbox-policy/src/session-mode.ts
+index 165a462046..c1e567b92e 100644
+--- a/packages/sandbox/sandbox-policy/src/session-mode.ts
++++ b/packages/sandbox/sandbox-policy/src/session-mode.ts
+@@ -39,7 +39,7 @@ declare module '@deepseek-ai/dsh-session/types' {
+ }
+ 
+ /** Every {@link SandboxMode}, for option advertisement and runtime validation of untrusted mode strings. */
+-export const SANDBOX_MODES: readonly SandboxMode[] = ['read-only', 'workspace-write', 'danger-full-access']
++export const SANDBOX_MODES: readonly SandboxMode[] = ['read-only', 'workspace-write', 'careful-full-access', 'danger-full-access']
+ 
+ /**
+  * The session's sandbox-mode override: the last `sandbox/mode` event in the
+diff --git a/packages/sandbox/sandbox-windows-acl/src/acl.ts b/packages/sandbox/sandbox-windows-acl/src/acl.ts
+index eded0f86a8..2b0ec28fa9 100644
+--- a/packages/sandbox/sandbox-windows-acl/src/acl.ts
++++ b/packages/sandbox/sandbox-windows-acl/src/acl.ts
+@@ -29,13 +29,19 @@ import * as abi from './win32-abi.ts'
+  * @param sidPtr - the trustee SID the entry names.
+  * @param mode - the access mode (GRANT_ACCESS or REVOKE_ACCESS).
+  * @param permissions - the access mask to grant (0 for REVOKE_ACCESS).
++ * @param inheritance - the AceFlags inheritance byte (defaults to OI|CI).
+  * @returns the packed entry buffer.
+  */
+-export function buildExplicitAccess(sidPtr: NativePtr, mode: number, permissions: number): Buffer {
++export function buildExplicitAccess(
++  sidPtr: NativePtr,
++  mode: number,
++  permissions: number,
++  inheritance: number = abi.SUB_CONTAINERS_AND_OBJECTS_INHERIT,
++): Buffer {
+   const entry = Buffer.alloc(abi.EXPLICIT_ACCESS_W_SIZE)
+   entry.writeUInt32LE(permissions, 0) // grfAccessPermissions
+   entry.writeUInt32LE(mode, 4) // grfAccessMode
+-  entry.writeUInt32LE(abi.SUB_CONTAINERS_AND_OBJECTS_INHERIT, 8) // grfInheritance: OI|CI
++  entry.writeUInt32LE(inheritance, 8) // grfInheritance
+   entry.writeUInt32LE(abi.NO_MULTIPLE_TRUSTEE, 24) // Trustee.MultipleTrusteeOperation
+   entry.writeUInt32LE(abi.TRUSTEE_IS_SID, 28) // Trustee.TrusteeForm
+   entry.writeUInt32LE(abi.TRUSTEE_IS_UNKNOWN, 32) // Trustee.TrusteeType
+@@ -134,13 +140,13 @@ function readCurrentDacl(api: Win32Bindings, path: string): { oldAcl: NativePtr
+ }
+ 
+ /**
+- * Shared tail of grantWrite and revokeWrite: merge `entry` into `oldAcl`
++ * Shared tail of grantWrite and revokeWrite: merge `entries` into `oldAcl`
+  * (null = no explicit DACL yet; SetEntriesInAclW builds one from scratch),
+  * free the descriptor before applying the merged ACL, apply it, then free the
+  * merged ACL — checking every call and reporting with the caller's label.
+  * @param api - the binding table.
+  * @param path - the directory the DACL edit applies to.
+- * @param entry - the EXPLICIT_ACCESS_W to merge (grant or revoke).
++ * @param entries - the EXPLICIT_ACCESS_W buffers to merge (grant or revoke), contiguous.
+  * @param oldAcl - the current explicit DACL (from {@link readCurrentDacl}).
+  * @param descriptor - the descriptor allocation owning `oldAcl`.
+  * @param label - the caller's name for error details.
+@@ -148,13 +154,13 @@ function readCurrentDacl(api: Win32Bindings, path: string): { oldAcl: NativePtr
+ function mergeAndApply(
+   api: Win32Bindings,
+   path: string,
+-  entry: Buffer,
++  entries: Buffer[],
+   oldAcl: NativePtr | null,
+   descriptor: NativePtr | null,
+   label: string,
+ ): void {
+   const newAclSlot = allocPtrSlot()
+-  const mergeResult = api.setEntriesInAclW(1, entry, oldAcl, newAclSlot)
++  const mergeResult = api.setEntriesInAclW(entries.length, Buffer.concat(entries), oldAcl, newAclSlot)
+   if (mergeResult !== abi.ERROR_SUCCESS) {
+     if (descriptor !== null) api.localFree(descriptor) // frees the ACL block too
+     throwWin32(api, 'SetEntriesInAclW', mergeResult, `${label}(${path})`)
+@@ -179,67 +185,107 @@ function mergeAndApply(
+ }
+ 
+ /**
+- * True when the explicit DACL already carries the EXACT write grant this
+- * module would add (Allow ACE, OI|CI inheritance, {@link abi.GRANT_MASK}, the
+- * capability SID). Every field is read through koffi.decode at pointer offsets —
+- * no memcpy, no pointer arithmetic. The ACE's SID is INLINE (embedded in the
+- * ACE after the 4-byte mask — there is no pointer to read; reading one
+- * yields garbage addresses and crashed EqualSid, verified by gdb), so it is
+- * compared field-by-field against the capability SID through bounded offset
+- * reads ({@link sameSidAt}). A malformed header reads as "no exact grant"
+- * so the caller falls back to the merge-apply path, which owns the robust
+- * failure handling.
++ * The grant shape the current explicit DACL carries for the capability SID:
++ * `exact` holds the two-ACE pair this module now writes (an inherit-only
++ * full-Modify ACE for descendants plus a root-only ACE without DELETE);
++ * `legacy` holds the pre-split single OI|CI full-Modify ACE (whose DELETE
++ * would let the confined child delete the root object — the shape the
++ * migration replaces in place); `absent` holds neither. Every field is read
++ * through koffi.decode at pointer offsets — no memcpy, no pointer arithmetic.
++ * The ACE's SID is INLINE (embedded in the ACE after the 4-byte mask — there
++ * is no pointer to read; reading one yields garbage addresses and crashed
++ * EqualSid, verified by gdb), so it is compared field-by-field against the
++ * capability SID through bounded offset reads ({@link sameSidAt}). A malformed
++ * header reads as `absent` so the caller falls back to the merge-apply path,
++ * which owns the robust failure handling.
+  * @param oldAcl - the current explicit DACL pointer (from {@link readCurrentDacl}).
+  * @param sidPtr - the capability SID to match.
+- * @returns whether the exact grant ACE is already present.
++ * @returns the recognized grant shape.
+  */
+-function hasExactGrant(oldAcl: NativePtr, sidPtr: NativePtr): boolean {
++type GrantShape = 'exact' | 'legacy' | 'absent'
++
++function grantShape(oldAcl: NativePtr, sidPtr: NativePtr): GrantShape {
+   const aclSize = decodeUint16At(oldAcl, 2)
+   const aceCount = decodeUint16At(oldAcl, 4)
+-  if (aclSize < 8 || aclSize > 1_048_576) return false // implausible: fall back to the merge path
++  if (aclSize < 8 || aclSize > 1_048_576) return 'absent' // implausible: fall back to the merge path
+   let offset = 8 // the first ACE follows the 8-byte ACL header
++  let foundInherit = false
++  let foundRoot = false
++  let foundLegacy = false
+   for (let index = 0; index < aceCount; index++) {
+     // ACE_HEADER: AceType@0, AceFlags@1, AceSize@2 (WORD);
+     // ACCESS_ALLOWED_ACE: Mask@4, inline SID@8.
+     const aceSize = decodeUint16At(oldAcl, offset + 2)
+-    if (aceSize < 8 || offset + aceSize > aclSize) return false // implausible: fall back to the merge path
+-    const exact = decodeUint8At(oldAcl, offset) === abi.ACCESS_ALLOWED_ACE_TYPE
+-      && decodeUint8At(oldAcl, offset + 1) === abi.SUB_CONTAINERS_AND_OBJECTS_INHERIT
+-      && decodeUint32At(oldAcl, offset + 4) === abi.GRANT_MASK
+-    if (exact && sameSidAt(oldAcl, offset + 8, sidPtr, 0)) return true
++    if (aceSize < 8 || offset + aceSize > aclSize) return 'absent' // implausible: fall back to the merge path
++    if (decodeUint8At(oldAcl, offset) !== abi.ACCESS_ALLOWED_ACE_TYPE || !sameSidAt(oldAcl, offset + 8, sidPtr, 0)) {
++      offset += aceSize
++      continue
++    }
++    const flags = decodeUint8At(oldAcl, offset + 1)
++    const mask = decodeUint32At(oldAcl, offset + 4)
++    if (flags === abi.SUB_CONTAINERS_AND_OBJECTS_INHERIT && mask === abi.GRANT_MASK) {
++      foundLegacy = true
++    } else if (flags === (abi.SUB_CONTAINERS_AND_OBJECTS_INHERIT | abi.INHERIT_ONLY_ACE) && mask === abi.GRANT_MASK) {
++      foundInherit = true
++    } else if (flags === 0 && mask === abi.ROOT_GRANT_MASK) {
++      foundRoot = true
++    }
+     offset += aceSize
+   }
+-  return false
++  if (foundInherit && foundRoot) return 'exact'
++  return foundLegacy ? 'legacy' : 'absent'
+ }
+ 
+ /**
+- * Grant `GRANT_MASK` (Write+Delete, displays as "Modify") to the capability SID
+- * on `path`, inheriting to subcontainers and objects. Idempotent: when the
+- * directory's current explicit DACL already carries the exact ACE (the
+- * per-session grant surviving from a previous server lifetime), the
+- * SetNamedSecurityInfoW apply is SKIPPED — it would otherwise re-propagate
+- * the identical ACE across the whole tree (eager inheritance; minutes on
+- * large workspaces). Otherwise read-merge-write: the new ACE merges into the
+- * directory's CURRENT explicit DACL (same shape as {@link revokeWrite}), so
+- * pre-existing explicit ACEs survive. Runs under the per-path lock. The
+- * directory must be owned by the caller (owner implicit WRITE_DAC) — same
+- * precondition as the POC.
++ * Grant write access to the capability SID on `path` as TWO ACEs: an
++ * inherit-only full-{@link abi.GRANT_MASK} ACE for subcontainers and objects
++ * (descendants keep the complete Write+Delete the confined child needs for
++ * delete/rename/git operations), and a root-only ACE with DELETE removed
++ * ({@link abi.ROOT_GRANT_MASK}, no inheritance) so the ROOT OBJECT ITSELF
++ * cannot be deleted or renamed by the confined child — recursive deletion can
++ * empty the tree but never take the root. Idempotent: when the current DACL
++ * already carries the exact pair (the per-session grant surviving from a
++ * previous server lifetime), the SetNamedSecurityInfoW apply is SKIPPED — it
++ * would otherwise re-propagate identical ACEs across the whole tree (eager
++ * inheritance; minutes on large workspaces). A pre-split LEGACY single-ACE
++ * grant is migrated in place: one merge that revokes the old ACE and adds the
++ * pair, so the root loses its DELETE exactly once. Otherwise read-merge-write:
++ * the pair merges into the directory's CURRENT explicit DACL (same shape as
++ * {@link revokeWrite}), so pre-existing explicit ACEs survive. Runs under the
++ * per-path lock. The directory must be owned by the caller (owner implicit
++ * WRITE_DAC) — same precondition as the POC.
+  * @param api - the binding table.
+  * @param path - the directory whose DACL gains the grant (the workspace or temp root).
+- * @param sidPtr - the capability SID the ACE names.
++ * @param sidPtr - the capability SID the ACEs name.
+  */
+ export function grantWrite(api: Win32Bindings, path: string, sidPtr: NativePtr): void {
+   withPathLock(api, path, () => {
+     const { oldAcl, descriptor } = readCurrentDacl(api, path)
+-    if (oldAcl !== null && hasExactGrant(oldAcl, sidPtr)) {
+-      // The exact ACE stands: releasing the descriptor is the whole operation.
+-      if (descriptor !== null) {
+-        const freed = api.localFree(descriptor)
+-        if (!isNullPtr(freed)) throwLastError(api, 'LocalFree', `grantWrite(${path}) descriptor`)
++    if (oldAcl !== null) {
++      const shape = grantShape(oldAcl, sidPtr)
++      if (shape === 'exact') {
++        // The exact pair stands: releasing the descriptor is the whole operation.
++        if (descriptor !== null) {
++          const freed = api.localFree(descriptor)
++          if (!isNullPtr(freed)) throwLastError(api, 'LocalFree', `grantWrite(${path}) descriptor`)
++        }
++        return
++      }
++      if (shape === 'legacy') {
++        // One-time migration: revoke the pre-split ACE and install the pair
++        // in the same merge so the tree re-propagates exactly once.
++        mergeAndApply(api, path, [
++          buildExplicitAccess(sidPtr, abi.REVOKE_ACCESS, 0),
++          buildExplicitAccess(sidPtr, abi.GRANT_ACCESS, abi.GRANT_MASK, abi.SUB_CONTAINERS_AND_OBJECTS_INHERIT | abi.INHERIT_ONLY_ACE),
++          buildExplicitAccess(sidPtr, abi.GRANT_ACCESS, abi.ROOT_GRANT_MASK, 0),
++        ], oldAcl, descriptor, 'grantWrite')
++        return
+       }
+-      return
+     }
+-    mergeAndApply(api, path, buildExplicitAccess(sidPtr, abi.GRANT_ACCESS, abi.GRANT_MASK), oldAcl, descriptor, 'grantWrite')
++    mergeAndApply(api, path, [
++      buildExplicitAccess(sidPtr, abi.GRANT_ACCESS, abi.GRANT_MASK, abi.SUB_CONTAINERS_AND_OBJECTS_INHERIT | abi.INHERIT_ONLY_ACE),
++      buildExplicitAccess(sidPtr, abi.GRANT_ACCESS, abi.ROOT_GRANT_MASK, 0),
++    ], oldAcl, descriptor, 'grantWrite')
+   })
+ }
+ 
+@@ -265,7 +311,7 @@ export function revokeWrite(api: Win32Bindings, path: string, sidPtr: NativePtr)
+       }
+       return false
+     }
+-    mergeAndApply(api, path, buildExplicitAccess(sidPtr, abi.REVOKE_ACCESS, 0), oldAcl, descriptor, 'revokeWrite')
++    mergeAndApply(api, path, [buildExplicitAccess(sidPtr, abi.REVOKE_ACCESS, 0)], oldAcl, descriptor, 'revokeWrite')
+     return true
+   })
+ }
+diff --git a/packages/sandbox/sandbox-windows-acl/src/win32-abi.ts b/packages/sandbox/sandbox-windows-acl/src/win32-abi.ts
+index 5af4496af7..cd7e2151c0 100644
+--- a/packages/sandbox/sandbox-windows-acl/src/win32-abi.ts
++++ b/packages/sandbox/sandbox-windows-acl/src/win32-abi.ts
+@@ -70,6 +70,18 @@ export const FILE_DELETE_CHILD = 0x0040
+  */
+ export const GRANT_MASK = (FILE_GENERIC_WRITE | DELETE | FILE_DELETE_CHILD) & ~STANDARD_RIGHTS_WRITE // 0x00110156
+ 
++/**
++ * ROOT_GRANT_MASK: {@link GRANT_MASK} minus DELETE and FILE_DELETE_CHILD —
++ * the mask the workspace ROOT's own non-inheriting ACE carries. The root
++ * object itself cannot be deleted or renamed, and the recursive-delete path
++ * (which marks the root delete-on-close through the root's own
++ * FILE_DELETE_CHILD) is closed too. Children stay fully operable through the
++ * inheritable ACE: deleting or renaming a child needs DELETE ON THE CHILD
++ * OBJECT, which the inherit-only full-{@link GRANT_MASK} ACE supplies, so
++ * in-workspace delete/rename/git operations are unaffected.
++ */
++export const ROOT_GRANT_MASK = FILE_GENERIC_WRITE & ~STANDARD_RIGHTS_WRITE // 0x00100116
++
+ /**
+  * FILE_ALL_ACCESS (winnt.h line ~2789: STANDARD_RIGHTS_REQUIRED | SYNCHRONIZE
+  * | 0x1FF): full file-object access. The mask of the ACE merged into the
+@@ -132,6 +144,13 @@ export const REVOKE_ACCESS = 4
+  */
+ export const SUB_CONTAINERS_AND_OBJECTS_INHERIT = 0x3 // == OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE
+ 
++/**
++ * INHERIT_ONLY_ACE: the ACE applies to descendants only, not to the object
++ * whose DACL carries it — the flag that keeps the children's full-Modify ACE
++ * off the workspace root object itself.
++ */
++export const INHERIT_ONLY_ACE = 0x8
++
+ // ---- winbase.h -------------------------------------------------------------
+ 
+ /**
+diff --git a/packages/sandbox/sandbox/src/escalation.ts b/packages/sandbox/sandbox/src/escalation.ts
+index e0b9a2ce63..19279b9a84 100644
+--- a/packages/sandbox/sandbox/src/escalation.ts
++++ b/packages/sandbox/sandbox/src/escalation.ts
+@@ -26,8 +26,9 @@ import type { SandboxMode } from './index.ts'
+  * registry-global while the effective mode is per-call truth.
+  */
+ export const WIDER_MODES: Record<string, readonly SandboxMode[]> = {
+-  'read-only': ['workspace-write', 'danger-full-access'],
+-  'workspace-write': ['danger-full-access'],
++  'read-only': ['workspace-write', 'careful-full-access', 'danger-full-access'],
++  'workspace-write': ['careful-full-access', 'danger-full-access'],
++  'careful-full-access': ['danger-full-access'],
+ }
+ 
+ /**
+@@ -38,7 +39,7 @@ export const WIDER_MODES: Record<string, readonly SandboxMode[]> = {
+  * mode sits below it (a `danger-full-access` default would advertise nothing
+  * while a narrower-switched session stays confined with no lever).
+  */
+-export const ESCALATION_TARGETS: readonly SandboxMode[] = ['workspace-write', 'danger-full-access']
++export const ESCALATION_TARGETS: readonly SandboxMode[] = ['workspace-write', 'careful-full-access', 'danger-full-access']
+ 
+ /**
+  * Validate the escalation argument pairing a tool schema cannot express:
+diff --git a/packages/sandbox/sandbox/src/index.ts b/packages/sandbox/sandbox/src/index.ts
+index 2d9ee5b91b..a1db80da38 100644
+--- a/packages/sandbox/sandbox/src/index.ts
++++ b/packages/sandbox/sandbox/src/index.ts
+@@ -23,13 +23,25 @@ export { canonicalPath, writableRoots } from './roots.ts'
+ /**
+  * File-effect policy for confined processes. `read-only` permits only required
+  * sinks such as `/dev/null`; `workspace-write` also permits the workspace and a
+- * backend-defined temp area; `danger-full-access` bypasses confinement. Network
+- * and process visibility are outside this vocabulary.
++ * backend-defined temp area; `danger-full-access` bypasses confinement with no
++ * guardrails; `careful-full-access` also bypasses confinement but marks the
++ * call for the command guard's deletion preview/confirm pipeline. Network and
++ * process visibility are outside this vocabulary.
+  */
+-export type SandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access'
++export type SandboxMode = 'read-only' | 'workspace-write' | 'careful-full-access' | 'danger-full-access'
+ 
+-/** A confining (non-`danger-full-access`) mode — the modes a {@link SandboxPolicy} can carry. */
+-export type ConfinedSandboxMode = Exclude<SandboxMode, 'danger-full-access'>
++/** A confining mode — the modes a {@link SandboxPolicy} can carry. */
++export type ConfinedSandboxMode = Exclude<SandboxMode, 'danger-full-access' | 'careful-full-access'>
++
++/**
++ * Whether a mode bypasses confinement entirely. Both `danger-full-access` and
++ * `careful-full-access` run without a restricted execution; the careful mode
++ * only differs at the command-guard layer, not at the sandbox seam.
++ * @param mode - the resolved mode.
++ */
++export function isUnconfinedMode(mode: SandboxMode): boolean {
++  return mode === 'danger-full-access' || mode === 'careful-full-access'
++}
+ 
+ /**
+  * The complete file-effect policy resolved for one capability call. The root
+diff --git a/packages/shell/bash-sandbox/src/index.ts b/packages/shell/bash-sandbox/src/index.ts
+index be9c6647ec..85d094babf 100644
+--- a/packages/shell/bash-sandbox/src/index.ts
++++ b/packages/shell/bash-sandbox/src/index.ts
+@@ -10,7 +10,7 @@
+ 
+ import { Context } from '@deepseek-ai/cordis'
+ import type { ShellExecRequest, ShellExecSpec, ShellProcess, ShellRunResult } from '@deepseek-ai/dsh-shell'
+-import { SandboxUnavailableError } from '@deepseek-ai/dsh-sandbox'
++import { SandboxUnavailableError, isUnconfinedMode } from '@deepseek-ai/dsh-sandbox'
+ import type {
+   ConfinedArgv,
+   ConfinedSandboxMode,
+@@ -88,11 +88,14 @@ export class SandboxBashExecutor extends LocalBashExecutor {
+   override async run(spec: ShellExecSpec): Promise<ShellRunResult> {
+     const policy = spec.sandboxPolicy as SandboxExecutionPolicy
+     const { mode } = policy
+-    if (mode === 'danger-full-access') {
++    if (isUnconfinedMode(mode)) {
+       const result = await super.run(spec)
+       return { ...result, sandbox: { mode, denied: false } }
+     }
+-    const confined = this.confine(spec.command, { ...policy, mode })
++    // The unconfined guard narrowed the mode semantically; the confined block
++    // below only runs for confining modes.
++    const confinedMode: ConfinedSandboxMode = mode as ConfinedSandboxMode
++    const confined = this.confine(spec.command, { ...policy, mode: confinedMode })
+     let result: ShellRunResult
+     try {
+       result = await this.runArgv(spec, confined.argv)
+@@ -100,7 +103,7 @@ export class SandboxBashExecutor extends LocalBashExecutor {
+       // An upstream abort remains cancellation even when it prevents spawn.
+       if (spec.signal?.aborted === true) spec.signal.throwIfAborted()
+       if (isRunnerSpawnFailure(error, confined.argv[0], spec.workdir)) {
+-        throw new SandboxUnavailableError(mode, String(error))
++        throw new SandboxUnavailableError(confinedMode, String(error))
+       }
+       throw error
+     }
+@@ -108,7 +111,7 @@ export class SandboxBashExecutor extends LocalBashExecutor {
+     // the matched fatal line, not an informational line that preceded it.
+     const runnerFailure = classifyRunnerFailure(result.exitCode, result.stderr.text, confined.runnerFailureRules)
+     if (runnerFailure !== undefined) {
+-      throw new SandboxUnavailableError(mode, runnerFailure.detail)
++      throw new SandboxUnavailableError(confinedMode, runnerFailure.detail)
+     }
+     return { ...result, sandbox: { mode, denied: classifyDenial(result, confined.denialSignatures), enforcement: confined.enforcement } }
+   }
+@@ -116,10 +119,13 @@ export class SandboxBashExecutor extends LocalBashExecutor {
+   override start(spec: ShellExecSpec): ShellProcess {
+     const policy = spec.sandboxPolicy as SandboxExecutionPolicy
+     const { mode } = policy
+-    if (mode === 'danger-full-access') return super.start(spec)
++    if (isUnconfinedMode(mode)) return super.start(spec)
++    // The unconfined guard narrowed the mode semantically; the confined block
++    // below only runs for confining modes.
++    const confinedMode: ConfinedSandboxMode = mode as ConfinedSandboxMode
+     // Once startArgv returns, install facts synchronously; promise settlement
+     // cannot run before start() returns.
+-    const confined = this.confine(spec.command, { ...policy, mode })
++    const confined = this.confine(spec.command, { ...policy, mode: confinedMode })
+     let proc: ShellProcess
+     try {
+       proc = this.startArgv(spec, confined.argv)
+@@ -127,13 +133,13 @@ export class SandboxBashExecutor extends LocalBashExecutor {
+       // LocalSubprocessRuntime reports ENOENT/EACCES with the failed executable path through async
+       // `done` rejection; this covers alternatives that throw the same error synchronously.
+       if (isRunnerSpawnFailure(error, confined.argv[0], spec.workdir)) {
+-        throw new SandboxUnavailableError(mode, String(error))
++        throw new SandboxUnavailableError(confinedMode, String(error))
+       }
+       throw error
+     }
+     const { enforcement, denialSignatures, runnerFailureRules } = confined
+     this.processFacts.set(proc, {
+-      mode,
++      mode: confinedMode,
+       enforcement,
+       denialSignatures,
+       runnerFailureRules,
+diff --git a/packages/shell/pwsh-sandbox/src/index.ts b/packages/shell/pwsh-sandbox/src/index.ts
+index 66bc73bcf0..f6c553a61a 100644
+--- a/packages/shell/pwsh-sandbox/src/index.ts
++++ b/packages/shell/pwsh-sandbox/src/index.ts
+@@ -14,7 +14,7 @@
+ 
+ import { Context } from '@deepseek-ai/cordis'
+ import type { ShellExecRequest, ShellExecSpec, ShellProcess, ShellRunResult } from '@deepseek-ai/dsh-shell'
+-import { SandboxUnavailableError } from '@deepseek-ai/dsh-sandbox'
++import { SandboxUnavailableError, isUnconfinedMode } from '@deepseek-ai/dsh-sandbox'
+ import type {
+   ConfinedArgv,
+   ConfinedSandboxMode,
+@@ -96,11 +96,14 @@ export class SandboxPwshExecutor extends PwshLocalExecutor {
+   override async run(spec: ShellExecSpec): Promise<ShellRunResult> {
+     const policy = spec.sandboxPolicy as SandboxExecutionPolicy
+     const { mode } = policy
+-    if (mode === 'danger-full-access') {
++    if (isUnconfinedMode(mode)) {
+       const result = await super.run(spec)
+       return { ...result, sandbox: { mode, denied: false } }
+     }
+-    const confined = this.confine(spec, { ...policy, mode })
++    // The unconfined guard narrowed the mode semantically; the confined block
++    // below only runs for confining modes.
++    const confinedMode: ConfinedSandboxMode = mode as ConfinedSandboxMode
++    const confined = this.confine(spec, { ...policy, mode: confinedMode })
+     let result: ShellRunResult
+     try {
+       result = await this.runArgv(spec, confined.argv)
+@@ -108,7 +111,7 @@ export class SandboxPwshExecutor extends PwshLocalExecutor {
+       // An upstream abort remains cancellation even when it prevents spawn.
+       if (spec.signal?.aborted === true) spec.signal.throwIfAborted()
+       if (isRunnerSpawnFailure(error, confined.argv[0], spec.workdir)) {
+-        throw new SandboxUnavailableError(mode, String(error))
++        throw new SandboxUnavailableError(confinedMode, String(error))
+       }
+       throw error
+     }
+@@ -116,7 +119,7 @@ export class SandboxPwshExecutor extends PwshLocalExecutor {
+     // the matched fatal line, not an informational line that preceded it.
+     const runnerFailure = classifyRunnerFailure(result.exitCode, result.stderr.text, confined.runnerFailureRules)
+     if (runnerFailure !== undefined) {
+-      throw new SandboxUnavailableError(mode, runnerFailure.detail)
++      throw new SandboxUnavailableError(confinedMode, runnerFailure.detail)
+     }
+     return { ...result, sandbox: { mode, denied: classifyDenial(result, confined.denialSignatures), enforcement: confined.enforcement } }
+   }
+@@ -124,22 +127,25 @@ export class SandboxPwshExecutor extends PwshLocalExecutor {
+   override start(spec: ShellExecSpec): ShellProcess {
+     const policy = spec.sandboxPolicy as SandboxExecutionPolicy
+     const { mode } = policy
+-    if (mode === 'danger-full-access') return super.start(spec)
++    if (isUnconfinedMode(mode)) return super.start(spec)
++    // The unconfined guard narrowed the mode semantically; the confined block
++    // below only runs for confining modes.
++    const confinedMode: ConfinedSandboxMode = mode as ConfinedSandboxMode
+     // Once startArgv returns, install facts synchronously; promise settlement
+     // cannot run before start() returns.
+-    const confined = this.confine(spec, { ...policy, mode })
++    const confined = this.confine(spec, { ...policy, mode: confinedMode })
+     let proc: ShellProcess
+     try {
+       proc = this.startArgv(spec, confined.argv)
+     } catch (error) {
+       if (isRunnerSpawnFailure(error, confined.argv[0], spec.workdir)) {
+-        throw new SandboxUnavailableError(mode, String(error))
++        throw new SandboxUnavailableError(confinedMode, String(error))
+       }
+       throw error
+     }
+     const { enforcement, denialSignatures, runnerFailureRules } = confined
+     this.processFacts.set(proc, {
+-      mode,
++      mode: confinedMode,
+       enforcement,
+       denialSignatures,
+       runnerFailureRules,
+diff --git a/packages/terminal/terminal-bash/src/index.ts b/packages/terminal/terminal-bash/src/index.ts
+index 82e864e7ab..07d6923dcd 100644
+--- a/packages/terminal/terminal-bash/src/index.ts
++++ b/packages/terminal/terminal-bash/src/index.ts
+@@ -10,7 +10,8 @@ import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
+ import { TerminalBackendCleanupError } from '@deepseek-ai/dsh-terminal'
+ import type { TerminalBackend, TerminalBackendSpawnSpec } from '@deepseek-ai/dsh-terminal'
+ import type { SubprocessTerminalHandle, SubprocessTerminalSpawnSpec } from '@deepseek-ai/dsh-subprocess'
+-import type { SandboxExecutionPolicy } from '@deepseek-ai/dsh-sandbox'
++import { isUnconfinedMode } from '@deepseek-ai/dsh-sandbox'
++import type { ConfinedSandboxMode, SandboxExecutionPolicy } from '@deepseek-ai/dsh-sandbox'
+ import { effectiveSandboxMode } from '@deepseek-ai/dsh-sandbox-policy'
+ import { type Config, type ResolvedConfig, validateConfig } from './config.ts'
+ import { LocalPtySession } from './session.ts'
+@@ -70,13 +71,14 @@ function childEnvironment(spec: TerminalBackendSpawnSpec): Record<string, string
+ 
+ function spawnArgv(ctx: Context, config: ResolvedConfig, policy: SandboxExecutionPolicy): string[] {
+   const argv = [config.shellPath, ...config.shellArgs]
+-  if (policy.mode === 'danger-full-access') return argv
++  if (isUnconfinedMode(policy.mode)) return argv
+   const sandbox = ctx.get('sandbox')
+   if (sandbox === undefined) {
+     throw new Error(`terminal-bash: sandbox mode "${policy.mode}" requires a ctx.sandbox provider in the execution world`)
+   }
+   // Re-state the discriminant because object spread does not preserve its narrowed type.
+-  return sandbox.confine(argv, { ...policy, mode: policy.mode }).argv
++  const confinedMode = policy.mode as ConfinedSandboxMode
++  return sandbox.confine(argv, { ...policy, mode: confinedMode }).argv
+ }
+ 
+ // TODO(pty-initialize-race-home): Fold this outer abort race into
+diff --git a/tsconfig.client.json b/tsconfig.client.json
+index e599f76f1b..5bf6b39b2c 100644
+--- a/tsconfig.client.json
++++ b/tsconfig.client.json
+@@ -91,6 +91,7 @@
+     { "path": "./packages/client/ui-settings-general" },
+     { "path": "./packages/client/ui-settings-models" },
+     { "path": "./packages/client/ui-settings-plugin-inventory" },
++    { "path": "./packages/client/ui-settings-restart" },
+     { "path": "./packages/client/locale" },
+     { "path": "./packages/client/web" },
+     { "path": "./apps/web" }
+diff --git a/tsconfig.host.json b/tsconfig.host.json
+index 459036247a..e322a55933 100644
+--- a/tsconfig.host.json
++++ b/tsconfig.host.json
+@@ -234,6 +234,7 @@
+     { "path": "./packages/spill/spill" },
+     { "path": "./packages/spill/spill-local" },
+     { "path": "./packages/spill/spill-policy" },
++    { "path": "./packages/guard/command-guard" },
+     { "path": "./packages/guard/timeout-policy" },
+     { "path": "./packages/runtime-diagnostics/invariants" },
+     { "path": "./packages/test-support/agent-loop-testkit" },
+@@ -293,6 +294,7 @@
+     { "path": "./packages/lsp/lsp" },
+     { "path": "./packages/lsp/lsp-stdio" },
+     { "path": "./packages/lsp/tool-lsp" },
++    { "path": "./packages/host/restart" },
+     { "path": "./apps/cli" }
+   ]
+ }
