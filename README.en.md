@@ -112,7 +112,7 @@ Restart, switch the session permission to `careful-full-access`, and the
 guard is live.
 
 > Source-development mode: place this repo at
-> `packages/guard/command-guard/` inside a DSH source tree and apply the patch
+> `packages/guard/careful-full-access/` inside a DSH source tree and apply the patch
 > to get monorepo type references and the full test suite; the npm install
 > path needs only the mount row, no tsconfig changes.
 
@@ -152,6 +152,19 @@ window), `analyzeTimeoutMs`, `previewTimeoutMs`, `previewSampleLimit`,
   human.
 - manual/auto confirmation policies, a persistent rule table ("always allow
   this"), and a soft-delete recovery layer are future items.
+
+## Related projects
+
+- [dsh-plugin-suite](https://github.com/zdjmrq/dsh-plugin-suite) — the
+  customization suite (partial fork): this plugin and
+  [dsh-restart-plugin](https://github.com/zdjmrq/dsh-restart-plugin)
+  (one-click backend shutdown / frontend refresh) merged into one cumulative
+  `install.patch` — apply once and everything is wired, for setups that want
+  several custom plugins;
+- [dsh-restart-plugin](https://github.com/zdjmrq/dsh-restart-plugin) — the
+  "shut down backend / refresh frontend" plugin;
+- [deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) — the
+  official upstream.
 
 ## License
 

@@ -79,7 +79,7 @@ AI 编码代理最大的无防护风险之一是**误删**：一条解析错误�
 
 重启后把会话权限切到 `careful-full-access`，守卫即生效。
 
-> 源码开发方式：把本仓库放入 DSH 源码树的 `packages/guard/command-guard/` 再应用补丁，
+> 源码开发方式：把本仓库放入 DSH 源码树的 `packages/guard/careful-full-access/` 再应用补丁，
 > 即可享受 monorepo 的类型引用与全量测试；npm 安装方式则只需挂载行，无需 tsconfig 改动。
 
 ## 配置项
@@ -105,6 +105,12 @@ AI 编码代理最大的无防护风险之一是**误删**：一条解析错误�
 - model-check 每条被标记命令消耗一次模型调用（延迟与 token），其判断质量取决于复核模型——
   这正是 disaster 档与模型自称危险的命令永远以人工收尾的原因。
 - manual/auto 确认策略、持久化规则表（"始终允许此模式"）与软删除恢复层为后续项。
+
+## 相关项目（双向互链）
+
+- [dsh-plugin-suite](https://github.com/zdjmrq/dsh-plugin-suite) —— 定制插件套件（局部 fork）：本插件与 [dsh-restart-plugin](https://github.com/zdjmrq/dsh-restart-plugin)（一键关闭后台 / 刷新前端）合并为一张累计 `install.patch`，一次应用全部接线完成，适合同时需要多个定制插件的场合；
+- [dsh-restart-plugin](https://github.com/zdjmrq/dsh-restart-plugin) —— 「关闭后台 / 刷新前端」插件；
+- [deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) —— 官方上游。
 
 ## License
 

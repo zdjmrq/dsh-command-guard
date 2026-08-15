@@ -129,7 +129,7 @@ index 5230f59835..f30fdd34ba 100644
      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
        <path d={shieldOutline} stroke="currentColor" strokeWidth="1.31831" strokeLinejoin="round" />
 diff --git a/packages/core/tools/src/index.ts b/packages/core/tools/src/index.ts
-index 377015feb3..39375ba1f9 100644
+index 377015feb3..2f0b19e033 100644
 --- a/packages/core/tools/src/index.ts
 +++ b/packages/core/tools/src/index.ts
 @@ -582,13 +582,15 @@ export type ToolExecutionResult = ToolExecutionSuccess | ToolExecutionFailure
@@ -151,7 +151,15 @@ index 377015feb3..39375ba1f9 100644
  
  /**
   * Post-dispatch decision: accept, replace one projection, attach context for the
-@@ -1708,6 +1710,7 @@ export class ToolRuntime extends Service {
+@@ -969,7 +971,6 @@ export class ToolRuntime extends Service {
+         yield ctx.systemPrompt.section(this.sdkSection())
+       }
+     }.bind(this), 'tools.presentAs()')
+-    // oxlint-disable-next-line typescript/no-misused-promises -- synchronous composite teardown; direct return preserves disposer identity
+     return dispose
+   }
+ 
+@@ -1708,6 +1709,7 @@ export class ToolRuntime extends Service {
        toolName: exec.name,
        callId: exec.callId,
        ...ask.reason !== undefined ? { reason: ask.reason } : {},
