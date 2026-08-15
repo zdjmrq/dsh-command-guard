@@ -1,5 +1,5 @@
 diff --git a/packages/bundle/base/cordis.patch.yml b/packages/bundle/base/cordis.patch.yml
-index e9567d9206..90ac23f696 100644
+index e9567d9206..d21fdceeb6 100644
 --- a/packages/bundle/base/cordis.patch.yml
 +++ b/packages/bundle/base/cordis.patch.yml
 @@ -200,10 +200,19 @@
@@ -23,7 +23,7 @@ index e9567d9206..90ac23f696 100644
        name: '@deepseek-ai/dsh-shell-env'
  
 diff --git a/packages/bundle/base/package.json b/packages/bundle/base/package.json
-index 706ee3202a..be02b3bcb1 100644
+index 706ee3202a..a4298a4202 100644
 --- a/packages/bundle/base/package.json
 +++ b/packages/bundle/base/package.json
 @@ -59,6 +59,7 @@
@@ -593,10 +593,10 @@ index e0b9a2ce63..19279b9a84 100644
  /**
   * Validate the escalation argument pairing a tool schema cannot express:
 diff --git a/packages/sandbox/sandbox/src/index.ts b/packages/sandbox/sandbox/src/index.ts
-index 2d9ee5b91b..a1db80da38 100644
+index 2d9ee5b91b..5d86b59545 100644
 --- a/packages/sandbox/sandbox/src/index.ts
 +++ b/packages/sandbox/sandbox/src/index.ts
-@@ -23,13 +23,25 @@ export { canonicalPath, writableRoots } from './roots.ts'
+@@ -23,13 +23,26 @@ export { canonicalPath, writableRoots } from './roots.ts'
  /**
   * File-effect policy for confined processes. `read-only` permits only required
   * sinks such as `/dev/null`; `workspace-write` also permits the workspace and a
@@ -620,6 +620,7 @@ index 2d9ee5b91b..a1db80da38 100644
 + * `careful-full-access` run without a restricted execution; the careful mode
 + * only differs at the command-guard layer, not at the sandbox seam.
 + * @param mode - the resolved mode.
++ * @returns whether the mode is unconfined.
 + */
 +export function isUnconfinedMode(mode: SandboxMode): boolean {
 +  return mode === 'danger-full-access' || mode === 'careful-full-access'
@@ -829,14 +830,14 @@ index e599f76f1b..5bf6b39b2c 100644
      { "path": "./packages/client/web" },
      { "path": "./apps/web" }
 diff --git a/tsconfig.host.json b/tsconfig.host.json
-index 459036247a..e322a55933 100644
+index 459036247a..db650d4131 100644
 --- a/tsconfig.host.json
 +++ b/tsconfig.host.json
 @@ -234,6 +234,7 @@
      { "path": "./packages/spill/spill" },
      { "path": "./packages/spill/spill-local" },
      { "path": "./packages/spill/spill-policy" },
-+    { "path": "./packages/guard/command-guard" },
++    { "path": "./packages/guard/careful-full-access" },
      { "path": "./packages/guard/timeout-policy" },
      { "path": "./packages/runtime-diagnostics/invariants" },
      { "path": "./packages/test-support/agent-loop-testkit" },
