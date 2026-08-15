@@ -9,7 +9,7 @@
  * False positives are acceptable here — the AST pass refines; false negatives
  * are not, so the tokenizer errs toward flagging.
  *
- * @module @deepseek-ai/dsh-command-guard/lexer
+ * @module dsh-careful-full-access/lexer
  */
 
 import { analyzeGit, isGitInvocation, type GitFacts } from './git.ts'

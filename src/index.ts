@@ -11,7 +11,7 @@
  * `$DSH_HOME/logs/command-guard.log`, while the session log keeps only a
  * bounded, deduplicated window of decision events.
  *
- * @module @deepseek-ai/dsh-command-guard
+ * @module dsh-careful-full-access
  */
 
 import { Context } from '@deepseek-ai/cordis'

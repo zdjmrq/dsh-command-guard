@@ -1,4 +1,4 @@
-# dsh-command-guard
+# dsh-careful-full-access
 
 > DeepSeek Harness（DSH）插件：命令守卫——**只在 `careful-full-access` 模式下生效**，
 > 在派发前判定每一条 `pwsh`/`bash` 调用：静态分级 + WhatIf 范围解析 + model-check 三问复核 +
@@ -68,13 +68,13 @@ AI 编码代理最大的无防护风险之一是**误删**：一条解析错误�
 
 1. 把补丁打到 DSH 源码树（注册 `careful-full-access` 模式、预设、UI 与红色确认链路）：
    `git apply patches/careful-full-access.patch` 并重建。
-2. 安装插件：`pnpm add dsh-command-guard`（或 npm install）。
+2. 安装插件：`pnpm add dsh-careful-full-access`（或 npm install）。
 3. 在宿主组合（host composition，例如 `packages/bundle/base/cordis.patch.yml`）加入一行
    （补丁已包含此行，手动挂载时自行添加）：
 
 ```yaml
 - id: command-guard
-  name: 'dsh-command-guard'
+  name: 'dsh-careful-full-access'
 ```
 
 重启后把会话权限切到 `careful-full-access`，守卫即生效。

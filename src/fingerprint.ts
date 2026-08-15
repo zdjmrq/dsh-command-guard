@@ -4,7 +4,7 @@
  * instead of appending duplicate audit records, and entries expire so a
  * long-lived session never keeps fingerprints forever.
  *
- * @module @deepseek-ai/dsh-command-guard/fingerprint
+ * @module dsh-careful-full-access/fingerprint
  */
 
 /**

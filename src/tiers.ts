@@ -7,7 +7,7 @@
  * model-check, or model-check plus human confirmation is the engine's
  * decision, not the classifier's.
  *
- * @module @deepseek-ai/dsh-command-guard/tiers
+ * @module dsh-careful-full-access/tiers
  */
 
 import type { GuardTier, GuardVerdict, PwshReport } from './types.ts'

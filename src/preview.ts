@@ -13,7 +13,7 @@
  * delete cmdlet DO execute during the preview — a documented tradeoff of
  * asking the shell itself for the truth.
  *
- * @module @deepseek-ai/dsh-command-guard/preview
+ * @module dsh-careful-full-access/preview
  */
 
 import type { PreviewOutcome, Spawner } from './types.ts'

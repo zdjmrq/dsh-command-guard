@@ -1,13 +1,13 @@
 /**
- * Package-owned invariant companion for `@deepseek-ai/dsh-command-guard`.
- * @module @deepseek-ai/dsh-command-guard/invariant
+ * Package-owned invariant companion for `dsh-careful-full-access`.
+ * @module dsh-careful-full-access/invariant
  */
 
 /* jscpd:ignore-start */
 import type { Context } from '@deepseek-ai/cordis'
 import type { InvariantInstaller } from '@deepseek-ai/dsh-invariants'
 
-const PACKAGE_NAME = '@deepseek-ai/dsh-command-guard'
+const PACKAGE_NAME = 'dsh-careful-full-access'
 
 /** Cordis companion plugin name. */
 export const name = 'command-guard-invariant'

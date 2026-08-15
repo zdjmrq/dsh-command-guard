@@ -12,7 +12,7 @@
  * aborted or failed stream, or an unparseable answer all fail closed as
  * `unavailable` — the caller then treats the command as disaster-tier.
  *
- * @module @deepseek-ai/dsh-command-guard/model-check
+ * @module dsh-careful-full-access/model-check
  */
 
 import { createUserMessage, type GenerateOptions, type StreamChunk } from '@deepseek-ai/dsh-llm'

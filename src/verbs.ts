@@ -4,7 +4,7 @@
  * verb, and the POSIX (bash-dialect) set. Pure data plus canonicalization
  * helpers — the analyzer and tier classifier both consume it.
  *
- * @module @deepseek-ai/dsh-command-guard/verbs
+ * @module dsh-careful-full-access/verbs
  */
 
 /** The risk families the guard tiers route on. */

@@ -7,7 +7,7 @@
  * every `CommandAst` and reports verbs, literal/expandable strings, variables,
  * parameters, and `.NET` deletion member calls as one compact JSON line.
  *
- * @module @deepseek-ai/dsh-command-guard/analyzer
+ * @module dsh-careful-full-access/analyzer
  */
 
 import { spawn } from 'node:child_process'

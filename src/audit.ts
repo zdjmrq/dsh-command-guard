@@ -9,7 +9,7 @@
  * `{event:"repeat", count, fingerprint}` line instead of duplicating the full
  * decision record; the session gate skips repeat appends entirely.
  *
- * @module @deepseek-ai/dsh-command-guard/audit
+ * @module dsh-careful-full-access/audit
  */
 
 import { appendFile, mkdir, rename, stat } from 'node:fs/promises'

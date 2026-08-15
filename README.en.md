@@ -1,4 +1,4 @@
-# dsh-command-guard
+# dsh-careful-full-access
 
 > A DeepSeek Harness (DSH) plugin: a command guard that is **active only in the
 > `careful-full-access` sandbox mode** — static tiering, WhatIf scope
@@ -98,14 +98,14 @@ danger-full-access is the user's explicit opt-out; neither is second-guessed.
 1. Apply the patch to a DSH source tree (registers the careful mode, the
    preset, the UI, and the red confirmation chain):
    `git apply patches/careful-full-access.patch`, then rebuild.
-2. Install the plugin: `pnpm add dsh-command-guard` (or npm install).
+2. Install the plugin: `pnpm add dsh-careful-full-access` (or npm install).
 3. Mount in the host composition (e.g.
    `packages/bundle/base/cordis.patch.yml` — the patch already contains this
    row; add it yourself for manual mounting):
 
 ```yaml
 - id: command-guard
-  name: 'dsh-command-guard'
+  name: 'dsh-careful-full-access'
 ```
 
 Restart, switch the session permission to `careful-full-access`, and the

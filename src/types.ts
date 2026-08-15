@@ -3,7 +3,7 @@
  * verdicts, the preview outcome, and the spawner seam that keeps every
  * process-backed path injectable in tests.
  *
- * @module @deepseek-ai/dsh-command-guard/types
+ * @module dsh-careful-full-access/types
  */
 
 /** One PowerShell command's AST-extracted facts. */

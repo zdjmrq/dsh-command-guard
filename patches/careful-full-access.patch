@@ -17,7 +17,7 @@ index e9567d9206..90ac23f696 100644
 +    # high-risk ask) and the careful-full-access preview/model-check
 +    # pipeline. Host plane: every session's shell calls pass through it.
 +    - id: command-guard
-+      name: 'dsh-command-guard'
++      name: 'dsh-careful-full-access'
 +
      - id: shell-env
        name: '@deepseek-ai/dsh-shell-env'
@@ -30,7 +30,7 @@ index 706ee3202a..be02b3bcb1 100644
      "@deepseek-ai/dsh-fs-sandbox": "workspace:^",
      "@deepseek-ai/dsh-goal": "workspace:^",
      "@deepseek-ai/dsh-goal-round-driver": "workspace:^",
-+    "dsh-command-guard": "workspace:^",
++    "dsh-careful-full-access": "workspace:^",
      "@deepseek-ai/dsh-api-gateway": "workspace:^",
      "@deepseek-ai/dsh-llm": "workspace:^",
      "@deepseek-ai/dsh-llm-deepseek": "workspace:^",

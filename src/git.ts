@@ -8,7 +8,7 @@
  * Pure — no processes, no state. The same rules run for both PowerShell and
  * bash dialects.
  *
- * @module @deepseek-ai/dsh-command-guard/git
+ * @module dsh-careful-full-access/git
  */
 
 /** The analysis of one `git …` invocation; `undefined` when the command is not one. */

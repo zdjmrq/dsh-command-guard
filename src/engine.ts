@@ -10,7 +10,7 @@
  * the model-check three-question review — with human confirmation as the last
  * layer for disaster-tier or model-declared-dangerous commands.
  *
- * @module @deepseek-ai/dsh-command-guard/engine
+ * @module dsh-careful-full-access/engine
  */
 
 import type { SandboxMode } from '@deepseek-ai/dsh-sandbox'

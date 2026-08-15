@@ -6,7 +6,7 @@
  * otherwise, decided from the path text itself so the same code classifies
  * both PowerShell and bash targets on any host.
  *
- * @module @deepseek-ai/dsh-command-guard/protected
+ * @module dsh-careful-full-access/protected
  */
 
 /** A PowerShell-style drive-letter root WITH its separator: `C:\`. */
