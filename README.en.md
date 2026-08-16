@@ -187,6 +187,11 @@ window), `analyzeTimeoutMs`, `previewTimeoutMs`, `previewSampleLimit`,
   (one-click backend shutdown / frontend refresh) merged into one cumulative
   `install.patch` — apply once and everything is wired, for setups that want
   several custom plugins;
+- [dsh-text-open-source](https://github.com/zdjmrq/dsh-text-open-source) — the
+  "text open-source" hub: a code-free, reproducible description of this plugin
+  lives at
+  [plugins/dsh-careful-full-access.md](https://github.com/zdjmrq/dsh-text-open-source/blob/main/plugins/dsh-careful-full-access.md)
+  (easy to understand and customize);
 - [deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) — the
   official upstream.
 

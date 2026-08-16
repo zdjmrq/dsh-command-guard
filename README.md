@@ -115,6 +115,7 @@ pnpm test             # vitest：227 例通过 + 1 例按需跳过
 ## 相关项目（双向互链）
 
 - [dsh-plugin-suite](https://github.com/zdjmrq/dsh-plugin-suite) —— 定制插件套件（局部 fork）：本插件与 [dsh-restart-plugin](https://github.com/zdjmrq/dsh-restart-plugin)（一键关闭后台 / 刷新前端）合并为一张累计 `install.patch`，一次应用全部接线完成，适合同时需要多个定制插件的场合；
+- [dsh-text-open-source](https://github.com/zdjmrq/dsh-text-open-source) —— 「文字开源」枢纽仓库:本插件的可复刻文字描述见 [plugins/dsh-careful-full-access.md](https://github.com/zdjmrq/dsh-text-open-source/blob/main/plugins/dsh-careful-full-access.md)(不依赖代码即可复刻、便于理解与微调);
 - [deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) —— 官方上游。
 
 ## License
